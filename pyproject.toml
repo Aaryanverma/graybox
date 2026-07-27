@@ -1,17 +1,31 @@
 [project]
 name = "graybox"
 version = "0.1.0"
+dynamic = ["dependencies"]
 description = "Gray Box - Remember Better."
-requires-python = ">=3.9"
-dependencies = [
-    "pyyaml>=6.0",
-    "requests>=2.31",
-    "litellm==1.93.0",
-    "tenacity==9.1.2",
-    "python-dotenv==1.2.2",
-    "readchar==4.2.2",
-    "pyfiglet==1.0.3",
+readme = "README.md"
+authors = [
+    { name = "Aaryan Verma" }
 ]
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",]
+
+[project.optional-dependencies]
+test = ["pytest==9.0.3", "pytest-asyncio==1.0.0"]
+
+[project.urls]
+Homepage = "https://github.com/Aaryanverma/graybox"
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
 
 [project.scripts]
 graybox = "graybox.cli:main"
@@ -22,6 +36,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["graybox", "graybox.ai"]
+include-package-data = true
+
+[tool.setuptools.exclude-package-data]
+"*" = ["*.ipynb", ".ipynb_checkpoints", "*.json", ".csv", "*.yaml", "*.yml"]
 
 [tool.coverage.run]
 omit = [

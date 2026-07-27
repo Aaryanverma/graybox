@@ -83,6 +83,13 @@ flowchart LR
 
 ## Installation
 
+```python
+pip install graybox
+
+# for tests
+pip install graybox[test]
+```
+
 ```bash
 git clone https://github.com/Aaryanverma/graybox
 cd graybox
@@ -193,7 +200,7 @@ active_workspace: "personal"   # which workspace is currently active — kept in
 env_file: "creds.env"          # optional .env file for API keys
 
 llm:
-  model_name: "mistral/mistral-small-2506"   # any LiteLLM-supported model string
+  model_name: "openai/gpt-5.6"   # any LiteLLM-supported model string
   temperature: 0
   base_url: ""
   max_tokens: 1024
@@ -205,7 +212,7 @@ retrieval:
 
 embeddings:
   enabled: false               # opt-in: turn on for semantic/paraphrase recall
-  model_name: "text-embedding-3-small"  # any LiteLLM-supported embedding model string
+  model_name: "openai/text-embedding-3-small"  # any LiteLLM-supported embedding model string
   base_url: ""
 ```
 
@@ -385,7 +392,7 @@ Longevity and inspectability. A `.md` file with YAML frontmatter opens in litera
 
 ## Roadmap
 
-- [ ] First-class decision log & work timeline views
+- [ ] Decision Intelligence & Memory Timeline
 - [ ] Meeting summarization
 - [ ] Automatic daily journal digest
 - [ ] Typed relationship edges (causal/dependency traversal — "what's blocking X," "why was Y decided" — beyond simple co-occurrence links)
