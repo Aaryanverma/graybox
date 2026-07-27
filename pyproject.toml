@@ -33,7 +33,7 @@ graybox = "graybox.cli:main"
 [build-system]
 requires = [
     "setuptools>=80",
-    "setuptools-scm>=8",
+    "setuptools-scm[simple]>=8",
 ]
 build-backend = "setuptools.build_meta"
 
