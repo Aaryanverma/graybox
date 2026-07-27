@@ -1,0 +1,14 @@
+*.env
+.pytest_cache/
+__pycache__/
+.ipynb_checkpoints/
+.vscode/
+.DS_Store
+*.html
+*.coverage
+mlruns/
+mlflow.db
+.deepeval
+*.ipynb
+myworkspaces
+.graybox

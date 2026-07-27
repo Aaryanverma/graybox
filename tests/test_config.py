@@ -1,0 +1,87 @@
+"""Tests for config.py — env-var > yaml > defaults precedence."""
+from __future__ import annotations
+
+import os
+import textwrap
+
+import pytest
+
+from graybox.config import load_config, _deep_merge, DEFAULTS
+
+
+class TestDeepMerge:
+    def test_override_wins(self):
+        base = {"a": 1, "b": {"c": 2, "d": 3}}
+        override = {"b": {"c": 99}}
+        merged = _deep_merge(base, override)
+        assert merged == {"a": 1, "b": {"c": 99, "d": 3}}
+
+    def test_non_dict_override_replaces(self):
+        base = {"a": {"x": 1}}
+        override = {"a": 5}
+        assert _deep_merge(base, override) == {"a": 5}
+
+
+@pytest.fixture
+def clean_env(monkeypatch):
+    for key in list(os.environ):
+        if key.startswith("GRAYBOX_"):
+            monkeypatch.delenv(key, raising=False)
+    yield monkeypatch
+
+
+class TestLoadConfig:
+    def test_defaults_used_when_no_file(self, tmp_path, clean_env, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cfg = load_config(str(tmp_path / "nope.yaml"))
+        assert cfg.llm.model_name == DEFAULTS["llm"]["model_name"]
+        assert cfg.retrieval.top_k == 5
+        assert cfg.retrieval.min_score == 0.4
+
+    def test_yaml_overrides_defaults(self, tmp_path, clean_env, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cfg_path = tmp_path / "config.yaml"
+        cfg_path.write_text(textwrap.dedent("""
+            root: ./.graybox
+            default_workspace: personal
+            llm:
+              model_name: custom/model-x
+              temperature: 0.7
+            retrieval:
+              top_k: 8
+              min_score: 0.6
+        """), encoding="utf-8")
+        cfg = load_config(str(cfg_path))
+        assert cfg.llm.model_name == "custom/model-x"
+        assert cfg.llm.temperature == 0.7
+        assert cfg.retrieval.top_k == 8
+        assert cfg.retrieval.min_score == 0.6
+
+    def test_env_var_overrides_yaml(self, tmp_path, clean_env, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cfg_path = tmp_path / "config.yaml"
+        cfg_path.write_text(textwrap.dedent("""
+            root: ./.graybox
+            default_workspace: personal
+            llm:
+              model_name: from-yaml
+        """), encoding="utf-8")
+        monkeypatch.setenv("GRAYBOX_LLM_MODEL", "from-env")
+        monkeypatch.setenv("GRAYBOX_TOP_K", "12")
+        cfg = load_config(str(cfg_path))
+        assert cfg.llm.model_name == "from-env"
+        assert cfg.retrieval.top_k == 12
+
+    def test_root_defaults_to_cwd_graybox(self, tmp_path, clean_env, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cfg = load_config(str(tmp_path / "nope.yaml"))
+        assert cfg.root == (tmp_path / ".graybox").resolve()
+
+    def test_for_workspace_switches_without_mutating_original(self, tmp_path, clean_env, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cfg = load_config(str(tmp_path / "nope.yaml"))
+        original_id = cfg.workspace_id
+        other_ws = cfg.workspace_manager.create("Work")
+        switched = cfg.for_workspace(other_ws)
+        assert switched.workspace_id == "work"
+        assert cfg.workspace_id == original_id

@@ -1,0 +1,20 @@
+root: ./myworkspaces
+default_workspace: personal
+active_workspace: personal
+env_file: creds.env #optional
+
+llm:
+  model_name: openai/gpt-5.6
+  temperature: 0
+  base_url: ''
+  max_tokens: 1024
+
+retrieval:
+  top_k: 5
+  min_score: 0.5         # search relevance threshold (ask/search)
+  dedup_threshold: 0.85   # entity/page similarity threshold (organize/dupes/merge)
+
+embeddings:
+  enabled: false          # set to true to enable semantic search (opt-in)
+  model_name: openai/text-embedding-3-small
+  base_url: ""
