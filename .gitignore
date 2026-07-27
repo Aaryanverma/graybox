@@ -12,3 +12,4 @@ mlflow.db
 *.ipynb
 myworkspaces
 .graybox
+graybox/_version.py
