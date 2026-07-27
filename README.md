@@ -1,6 +1,8 @@
 <div align="center">
 
-# Gray Box
+<!-- ![# Gray Box](assets/brand_logo.png) -->
+
+<img alt="Gray Box" src="assets/brand_logo.svg" width="50%">
 
 **A local-first, long-term memory for anything you'd otherwise forget.**
 
@@ -8,7 +10,11 @@
 
 Talk to it like a notebook. It quietly turns your notes into a living, cross-linked wiki — and answers your questions with evidence.
 
-`Python 3.10+` · `Markdown storage` · `No database` · `Any LLM`
+`Markdown storage` · `No database` · `Any LLM`
+
+![Build Status](https://github.com/Aaryanverma/graybox/actions/workflows/run-tests.yml/badge.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?color=green)](https://opensource.org/licenses/MIT)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Aaryanverma/graybox)
 
 </div>
 
