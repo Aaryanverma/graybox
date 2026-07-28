@@ -35,11 +35,12 @@ No vector database required. No cloud lock-in. No proprietary format. Just `.md`
 ---
 
 ## Table of contents
-
+ 
 - [Why it's built this way](#why-its-built-this-way)
 - [How it works](#how-it-works)
 - [Installation](#installation)
 - [Quick start](#quick-start)
+- [Interactive TUI](#interactive-tui)
 - [Workspaces](#workspaces)
 - [Command reference](#command-reference)
 - [Configuration](#configuration)
@@ -107,34 +108,45 @@ Then point it at an LLM. Set your API key however your provider expects it — e
 ---
 
 ## Quick start
+ 
+The fastest way to try Gray Box is to just run it with no arguments and let the interactive menu guide you:
+ 
+```bash
+graybox
+```
 
-Open a terminal:
+This drops you into a full-screen terminal UI — arrow keys to move, Enter to select — where `capture`, `organize`, `ask`, `chat`, `search`, `pages`, `dupes`, `dashboard`, and workspace switching are all just a keystroke away. It's the recommended way to get a feel for the whole loop (capture → organize → ask) without memorizing any commands.
+<div align='center'>
+<img src = 'assets/tui.png' width=700></img>
+</div>
+
+If you'd rather script it or wire it into other tools, every action above is also a plain CLI subcommand:
 
 ```bash
 # 1. Capture whatever's on your mind — no structure required
 graybox capture "Talked to Aaryan about the Atlas migration; he owns the DB cutover, due next Friday"
-
+ 
 # 2. Turn captures into structured, linked wiki pages
 graybox organize
-
+ 
 # 3. See what it built
 graybox pages
-
+ 
 # 4. Ask a question — get a cited answer
 graybox ask "who owns the Atlas DB cutover and when is it due?"
-
+ 
 # 5. Or hold a running conversation instead of one-off questions
 graybox chat
 ```
-
+ 
 Want to preview what `organize` *would* do before it writes anything?
-
+ 
 ```bash
 graybox organize --dry-run
 ```
-
+ 
 This still calls the LLM and shows you exactly which pages would be created (`new`) or updated (`updated`) — but writes nothing to disk, and doesn't mark anything as processed, so a real run afterward picks up right where the dry run left off.
-
+ 
 ---
 
 ## Workspaces
@@ -177,7 +189,7 @@ A few things worth knowing:
 | `graybox search "<query>"` | Fast local keyword search over wiki pages — no LLM call. `--top-k N` to control result count. |
 | `graybox pages` | Lists all wiki pages. Filter with `--type project\|person\|meeting\|technology\|topic\|task\|action\|decision`. |
 | `graybox status` | Quick summary: workspace path, inbox count, page count, active LLM model. |
-| `graybox dashboard` | Generates a self-contained, read-only HTML dashboard (`<workspace>/exports/dashboard.html`) with a task kanban board, filters, and a force-directed graph of your wiki's cross-links. Never writes back to `inbox/` or `wiki/`. |
+| `graybox dashboard` | Generates a self-contained, read-only HTML dashboard (`<workspace>/exports/dashboard.html`) with a task kanban board, filters, and a force-directed graph of your wiki's cross-links. Never writes back to `inbox/` or `wiki/`. [See Example](assets/dashboard.png)|
 | `graybox dupes` | Flags wiki pages that *look* like duplicates (fuzzy name match). Suggestion only — nothing is merged automatically. `--type` to restrict, `--threshold` (0–1, closer to 1 = more similar; default: `retrieval.dedup_threshold`, 0.85) to tune sensitivity. |
 | `graybox merge <keep-ref> <drop-ref>` | Merges `<drop-ref>` into `<keep-ref>` — unions notes, sources, aliases, tags, and links, keeps `<keep-ref>`'s title/type/status/summary on conflicts, deletes the dropped page, and rewires every other page that linked to it. `--dry-run` to preview. |
 | `graybox edit <ref>` | Fixes a wrongly-extracted page: `--title`, `--type`, `--status`, `--alias` (repeatable). Renaming or retyping moves the page and rewires every reference to it. `--dry-run` to preview. |
@@ -398,6 +410,7 @@ Longevity and inspectability. A `.md` file with YAML frontmatter opens in litera
 
 ## Roadmap
 
+- [ ] Dashboard Improvements
 - [ ] Decision Intelligence & Memory Timeline
 - [ ] Meeting summarization
 - [ ] Automatic daily journal digest

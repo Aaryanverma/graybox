@@ -51,6 +51,8 @@ class ColorCodes:
     YELLOW = "\x1b[33m"
     BLUE = "\x1b[34m"
     CYAN = "\x1b[36m"
+    GREY = "\x1b[90m"
+
 
 class Spinner:
     """Simple terminal spinner for long-running actions (LLM calls, etc.).
@@ -272,7 +274,7 @@ def _render_home_banner(cfg) -> None:
     linked = "https://www.linkedin.com/in/aaryanverma"
     fig = Figlet(font="slant", width=200)
     banner = fig.renderText("GRAY BOX").rstrip()
-    print(f"{ColorCodes.CYAN}{ColorCodes.BOLD}{banner}{ColorCodes.RESET}")
+    print(f"{ColorCodes.GREY}{ColorCodes.BOLD}{banner}{ColorCodes.RESET}")
     author = hyperlink("Aaryan Verma", linked)
     print()
     print(
