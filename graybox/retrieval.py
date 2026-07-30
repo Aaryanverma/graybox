@@ -79,9 +79,16 @@ def _build_context(hits: list[Hit], all_workspaces: bool = False) -> str:
             note_text = "\n".join(p.notes) if p.notes else p.summary
             tag = _source_tag(h, all_workspaces)
             provenance = f" (linked from {h.linked_from})" if h.linked_from else ""
-            blocks.append(f"[{tag}]{provenance} {p.title}\n{p.summary}\n{note_text}".strip())
+            meta = f"(created: {p.created} | last updated: {p.updated})"
+            blocks.append(
+                f"[{tag}]{provenance} {p.title} {meta}\n{p.summary}\n{note_text}".strip()
+            )
         else:
-            blocks.append(f"[{_source_tag(h, all_workspaces)}] (raw capture)\n{h.doc.item.content}".strip())
+            tag = _source_tag(h, all_workspaces)
+            meta = f"(captured: {h.doc.item.created})"
+            blocks.append(
+                f"[{tag}] (raw capture) {meta}\n{h.doc.item.content}".strip()
+            )
     return "\n\n---\n\n".join(blocks)
 
 

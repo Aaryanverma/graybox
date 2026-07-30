@@ -149,6 +149,7 @@ def process_item(cfg: Config, llm: AIService, item_id: str, item_content: str,
             _backlink(page_b, page_a.ref)
             if note:
                 _append_note(page_a, f"Related to {page_b.title}: {note}", item_id)
+                _append_note(page_b, f"Related to {page_a.title}: {note}", item_id)
         touch(page_a) if page_a else None
         touch(page_b) if page_b else None
 

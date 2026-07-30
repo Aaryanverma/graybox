@@ -21,6 +21,14 @@ logger = logging.getLogger(__name__)
 
 _EMBEDDING_CACHE: dict[str, "EmbeddingIndex"] = {}
 _NOISE_FLOOR = 0.05
+# Fixed high-end anchor for calibrating raw cosine similarity onto the 0-1
+# scale (see EmbeddingIndex.search). The low end comes from
+# cfg.retrieval.semantic_min_score so it's tunable per embedding model;
+# this constant is a reasonable default ceiling for the OpenAI-style
+# small embedding models this project defaults to. If you swap embedding
+# providers and semantic scores feel systematically too low/high, this is
+# the number to adjust.
+_CALIBRATION_HIGH = 0.5
 
 def _text_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
@@ -88,14 +96,23 @@ class EmbeddingIndex:
 
         Raw cosine similarity from the embedding model runs on its own,
         much lower and less intuitive range (genuine matches often sit
-        ~0.15-0.35, never near 1.0). Rather than exposing that as a second
-        threshold callers have to learn, we rescale it here once: drop
-        anything below the noise floor, then min-max normalize what's left
-        so the best match among the candidates lands near 1.0 and the
-        worst near 0.0 - the same "closer to 1 = better" convention used
-        everywhere else, checked against the SAME min_score everyone
-        already knows.
+        ~0.15-0.35, never near 1.0). We rescale it here once using FIXED,
+        query-independent anchors (`semantic_min_score` as the low end,
+        `_CALIBRATION_HIGH` as the high end) so a page's normalized score
+        reflects how similar it actually is to the query - not how it
+        compares to whatever else happens to be in this result set.
+
+        NOTE: this used to be a per-query min-max normalization (best
+        candidate -> 1.0, worst -> 0.0). That made min_score meaningless
+        whenever few pages were indexed: with only one candidate, spread
+        was always 0 and it was unconditionally normalized to 1.0 no
+        matter how weak the actual match was. Fixed anchors fix that -
+        a genuinely weak match now stays low even when it's the "best
+        available" one.
         """
+        low = self.cfg.retrieval.semantic_min_score
+        span = max(_CALIBRATION_HIGH - low, 1e-9)
+
         raw: list[tuple[str, float]] = []
         for ref, entry in self._data.items():
             emb = entry.get("embedding")
@@ -108,14 +125,10 @@ class EmbeddingIndex:
         if not raw:
             return []
 
-        scores = [s for _, s in raw]
-        lo, hi = min(scores), max(scores)
-        spread = hi - lo
-
         normalized: list[tuple[str, float]] = []
         for ref, sim in raw:
-            norm = 1.0 if spread < 1e-9 else (sim - lo) / spread
-            normalized.append((ref, round(norm, 4)))
+            norm = (sim - low) / span
+            normalized.append((ref, round(max(0.0, min(1.0, norm)), 4)))
 
         normalized.sort(key=lambda x: x[1], reverse=True)
         results = [(ref, s) for ref, s in normalized if s >= min_score]

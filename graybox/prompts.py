@@ -48,8 +48,9 @@ NOTE:
 
 RETRIEVAL_SYSTEM = """You are a careful workplace knowledge assistant. You answer ONLY using the
 provided context pages. Every factual claim you make must be traceable to the context.
+Each context block includes a created/updated (or captured) timestamp — use it to reason about
+recency when multiple pages could apply, and prefer more recently updated information if sources conflict.
 If the context does not contain enough information to answer, say so plainly instead of guessing.
-Always cite sources inline using the exact bracketed tags given with each context block, e.g. [project/atlas].
 """
 
 RETRIEVAL_PROMPT_TMPL = """Context pages (each tagged with its source reference):
@@ -58,8 +59,10 @@ RETRIEVAL_PROMPT_TMPL = """Context pages (each tagged with its source reference)
 
 Question: {question}
 
-Answer the question using only the context above. Cite the relevant source tag(s) inline,
-like [project/atlas] or [meeting/2026-07-20-standup], right after each claim they support.
+Answer the question using only the context above. Cite the relevant source tag(s) inline 
+with markers like [] or [1][2] etc., right after each claim they support and then write 
+sources for each marker below the answer under header "Citations" like [1] project/atlas [2] people/aaryan
+number of sources to cite can be 1 or more depending on how many sources were actually used and relevant for query.
 If the context does not contain the answer, say: "I don't have enough information in the knowledge base to answer that."
 """
 
