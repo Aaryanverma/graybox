@@ -24,7 +24,10 @@ Talk to it like a notebook. It quietly turns your notes into a living, cross-lin
 <summary><strong>📹 Video Demo</strong></summary>
 <br>
 
-<video controls src="assets/graybox demo.mp4" title="[Add your video demo link or embed here]"></video>
+<p align="center">
+  <img src="assets/graybox demo.gif" alt="Gray Box Demo" width="900">
+</p>
+
 </details>
 
 ---
