@@ -20,6 +20,15 @@ Talk to it like a notebook. It quietly turns your notes into a living, cross-lin
 
 ---
 
+<details>
+<summary><strong>📹 Video Demo</strong></summary>
+<br>
+
+<video controls src="assets/graybox demo.mp4" title="[Add your video demo link or embed here]"></video>
+</details>
+
+---
+
 ## What is this?
 
 You constantly generate information you'd like to hold onto — a decision made in a work meeting, a teammate's name and role, a task someone owes you, but just as easily a friend's birthday, a book someone recommended, notes from a doctor's visit, or an idea you had in the shower. Most of it evaporates. **Gray Box** is a small, local-first tool that:
