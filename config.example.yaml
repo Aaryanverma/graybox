@@ -1,0 +1,74 @@
+# Gray Box — example configuration
+#
+# WHERE TO PUT THIS FILE:
+#   Gray Box looks for config.yaml relative to the directory you RUN
+#   `graybox` from (not your home directory), in this order:
+#     1. --config /path/you/pass
+#     2. ./config.yaml            (cwd)
+#     3. ./.graybox/config.yaml   (cwd)
+#   Easiest: copy this file to `config.yaml` in the folder you'll run `graybox` from.
+
+# Where workspace data (inbox/, wiki/, etc.) is stored on disk.
+# Defaults to ./.graybox next to wherever you run the command.
+# Uncomment to pin it somewhere fixed instead:
+# root: ~/.graybox
+
+default_workspace: personal
+
+# ---------------------------------------------------------------------------
+# LLM — pick ONE of the options below, delete/comment out the rest.
+# Gray Box runs every call through LiteLLM, so `model_name` follows
+# LiteLLM's "<provider>/<model>" naming: https://docs.litellm.ai/docs/providers
+# ---------------------------------------------------------------------------
+
+# set GRAYBOX_LLM_API_KEY in your env or environment variables and put your api_key there.
+
+# Examples:
+# --- OpenAI ---
+  # model_name: gpt-4o-mini
+
+  # --- Anthropic ---
+  # model_name: anthropic/claude-sonnet-4-6
+
+  # --- Ollama (local models, no API key needed) ---
+  # 1. Confirm Ollama is running:      curl http://localhost:11434
+  # 2. Pull a model once:              ollama pull llama3.1
+  # 3. Use it here
+llm:
+  model_name: ollama/llama3.1
+  base_url: http://localhost:11434
+  temperature: 0.1
+
+# ---------------------------------------------------------------------------
+# Retrieval tuning — the defaults below are sane, leave them unless you've
+# noticed search feels too strict/loose in `ask`/`search`.
+# ---------------------------------------------------------------------------
+retrieval:
+  top_k: 5           # how many pages to pull as context per question
+  min_score: 0.8     # relevance floor (0-1, higher = stricter)
+  dedup_threshold: 0.85   # how similar two names must be to count as duplicates
+
+# ---------------------------------------------------------------------------
+# Embeddings — OPTIONAL. Adds semantic (meaning-based) search on top of
+# keyword search. Skip this section entirely if you're just getting started.
+# ---------------------------------------------------------------------------
+
+# set GRAYBOX_EMBEDDING_API_KEY in your env or environment variables and put your api_key there.
+
+# Examples:
+# --- OpenAI embeddings ---
+  # model_name: text-embedding-3-small
+
+  # --- Ollama embeddings ---
+  # model_name: ollama/nomic-embed-text
+  # base_url: http://localhost:11434
+embeddings:
+  enabled: false
+  model_name: ""
+  base_url: ""
+
+# ---------------------------------------------------------------------------
+# Optional: keep secrets in a .env file . Path is resolved relative to 
+# wherever THIS config.yaml lives.
+# ---------------------------------------------------------------------------
+env_file: .env #path to your env file

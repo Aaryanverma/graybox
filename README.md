@@ -120,8 +120,12 @@ Then point it at an LLM. Set your API key however your provider expects it — e
 ---
 
 ## Quick start
+
+- Open a terminal/CMD
+
+- Download the [Config File](config.example.yaml) in the same location where you started the terminal and update it.
  
-The fastest way to try Gray Box is to just run it with no arguments and let the interactive menu guide you:
+- The fastest way to try Gray Box is to just run it with no arguments and let the interactive menu guide you:
  
 ```bash
 graybox
@@ -132,7 +136,7 @@ This drops you into a full-screen terminal UI — arrow keys to move, Enter to s
 <img src = 'assets/tui.png' width=700></img>
 </div>
 
-If you'd rather script it or wire it into other tools, every action above is also a plain CLI subcommand:
+- If you'd rather script it or wire it into other tools, every action above is also a plain CLI subcommand:
 
 ```bash
 # 1. Capture whatever's on your mind — no structure required
