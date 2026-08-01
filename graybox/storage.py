@@ -64,7 +64,8 @@ def ensure_workspace(cfg: Config) -> None:
 def write_inbox_item(cfg: Config, content: str) -> InboxItem:
     ensure_workspace(cfg)
     inbox_dir = cfg.inbox_dir
-    ts = now_iso().replace(":", "").replace("-", "").replace("Z", "")
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     item_id = f"{ts}-{secrets.token_hex(2)}"
     body = (
         "---\n"
