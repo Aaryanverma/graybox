@@ -192,12 +192,11 @@ def _normalize_readchar_key(k: str) -> Key | str:
 
 
 def _getch() -> Key | str:
-    if readchar is not None:
-        try:
-            return _normalize_readchar_key(readchar.readkey())
-        except Exception:
-            pass
-
+    # Prefer the OS-native readers below over `readchar`: readchar.readkey()
+    # does a *blocking* read to disambiguate a lone ESC from the start of an
+    # arrow-key sequence (both start with \x1b), so a bare Esc keypress hangs
+    # forever instead of cancelling. The termios/msvcrt paths use a short
+    # select()/prefix-byte check instead, so ESC-alone resolves immediately.
     try:
         import msvcrt
 
@@ -214,6 +213,9 @@ def _getch() -> Key | str:
             return Key.BACKSPACE
         return ch.decode("utf-8", "ignore")
     except ImportError:
+        pass
+
+    try:
         import select
         import termios
         import tty
@@ -224,7 +226,7 @@ def _getch() -> Key | str:
             tty.setraw(fd)
             ch = os.read(fd, 1)
             if ch != b"\x1b":
-                if ch in (b"\n", b"\n"):
+                if ch in (b"\n", b"\r"):
                     return Key.ENTER
                 if ch in (b"\b", b""):
                     return Key.BACKSPACE
@@ -251,6 +253,15 @@ def _getch() -> Key | str:
             return decoded
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    except ImportError:
+        pass
+
+    if readchar is not None:
+        try:
+            return _normalize_readchar_key(readchar.readkey())
+        except Exception:
+            pass
+    return ""
 
 
 class MockArgs:
