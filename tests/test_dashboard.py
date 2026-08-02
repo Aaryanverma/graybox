@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-
+import re
 from graybox.dashboard import build_dashboard_data, build_dashboard_html, write_dashboard
 from graybox.models import Page, now_iso
 from graybox.storage import write_page, write_inbox_item, list_pages, list_inbox_items
@@ -54,15 +54,34 @@ class TestBuildDashboardData:
 
 class TestBuildDashboardHtml:
     def test_produces_valid_html_with_embedded_json(self, temp_cfg):
-        write_page(temp_cfg, Page(id="x", type="topic", title="X", created=now_iso(), updated=now_iso()))
+        write_page(
+            temp_cfg,
+            Page(
+                id="x",
+                type="topic",
+                title="X",
+                created=now_iso(),
+                updated=now_iso(),
+            ),
+        )
+
         html = build_dashboard_html(temp_cfg)
+
         assert html.startswith("<!doctype html>")
-        # embedded JSON payload must parse
-        start = html.index('id=\'data\' type=\'application/json\'>') + len("id='data' type='application/json'>")
+
+        marker = '<script id="dashboard-data" type="application/json">'
+        assert marker in html
+
+        start = html.index(marker) + len(marker)
         end = html.index("</script>", start)
-        payload = html[start:end]
+
+        payload = html[start:end].strip()
+
         parsed = json.loads(payload)
+
         assert "pages" in parsed
+        assert "summary" in parsed
+        assert "graph" in parsed
 
 
 class TestWriteDashboard:
