@@ -139,6 +139,7 @@ class AIService:
         reraise=True,
     )
     def llm_call(self, system_prompt: str = None, prompt: str = None, **kwargs) -> dict:
+        stream = kwargs.pop("stream", False)
         params = self.get_llm_params(**kwargs)
         messages = self._build_messages(system_prompt, prompt)
 
@@ -149,20 +150,49 @@ class AIService:
                     api_base=params["api_base"], api_key=params["api_key"],
                     api_version=params.get("api_version"),
                     deployment_id=params.get("deployment_id"),
-                    seed=42, input=messages, **params["final_kwargs"],
+                    seed=42, input=messages, stream=stream, **params["final_kwargs"],
                 )
             else:
                 response = completion(
                     model=params["model"], base_url=params["base_url"],
                     api_base=params["api_base"], api_key=params["api_key"],
-                    seed=42, messages=messages, **params["final_kwargs"],
+                    seed=42, messages=messages, stream=stream, **params["final_kwargs"],
                 )
+            if stream:
+                return {"response": response, "logprobs": None, "cost": 0.0, "streaming": True}
             return self._extract_response(response, params["api_type"])
 
         except RETRYABLE_EXCEPTIONS:
             raise
         except Exception as e:
             logger.exception(f"Error calling LLM: {e}")
+            return {"response": None, "logprobs": None, "cost": 0.0, "error": str(e)}
+
+    def llm_call_stream(self, system_prompt: str = None, prompt: str = None, **kwargs) -> dict:
+        params = self.get_llm_params(**kwargs)
+        messages = self._build_messages(system_prompt, prompt)
+
+        try:
+            if params["api_type"] == "responses":
+                stream = responses(
+                    model=params["model"], base_url=params["base_url"],
+                    api_base=params["api_base"], api_key=params["api_key"],
+                    api_version=params.get("api_version"),
+                    deployment_id=params.get("deployment_id"),
+                    seed=42, input=messages, stream=True, **params["final_kwargs"],
+                )
+            else:
+                stream = completion(
+                    model=params["model"], base_url=params["base_url"],
+                    api_base=params["api_base"], api_key=params["api_key"],
+                    seed=42, messages=messages, stream=True, **params["final_kwargs"],
+                )
+            return {"response": stream, "logprobs": None, "cost": 0.0, "streaming": True}
+
+        except RETRYABLE_EXCEPTIONS:
+            raise
+        except Exception as e:
+            logger.exception(f"Error calling LLM streaming: {e}")
             return {"response": None, "logprobs": None, "cost": 0.0, "error": str(e)}
 
     @retry(

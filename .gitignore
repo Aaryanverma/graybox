@@ -13,3 +13,4 @@ mlflow.db
 myworkspaces
 .graybox
 graybox/_version.py
+*.mp4

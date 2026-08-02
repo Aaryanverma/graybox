@@ -61,3 +61,20 @@ class TestCaptureFile:
         src.write_bytes(b"\xff\xfe\x00\x01binarydata\x80\x81")
         with pytest.raises(ValueError, match="isn't valid UTF-8"):
             capture_file(temp_cfg, str(src))
+
+class TestCaptureIdFormat:
+    """Regression test for the space-in-inbox-id bug: now_iso()'s
+    presentation format must never be able to leak into item.id, since the
+    id is used unquoted in filenames and CLI commands."""
+
+    def test_id_has_no_whitespace(self, temp_cfg):
+        item = capture(temp_cfg, "Some note")
+        assert " " not in item.id
+        assert "\t" not in item.id
+
+    def test_id_matches_documented_pattern(self, temp_cfg):
+        import re
+        item = capture(temp_cfg, "Some note")
+        # Matches the format documented in InboxItem's docstring,
+        # e.g. 20260724-153000-ab12
+        assert re.fullmatch(r"\d{8}-\d{6}-[0-9a-f]{4}", item.id)

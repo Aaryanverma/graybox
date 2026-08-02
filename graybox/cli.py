@@ -6,7 +6,6 @@ import sys
 from enum import Enum
 
 from pyfiglet import Figlet
-
 from graybox.ai import AIService
 from graybox.capture import capture, capture_file
 from graybox.config import load_config
@@ -42,16 +41,34 @@ import itertools
 import threading
 import time
 
+# class ColorCodes:
+#     RESET = "\x1b[0m"
+#     BOLD = "\x1b[1m"
+#     DIM = "\x1b[2m"
+#     RED = "\x1b[31m"
+#     GREEN = "\x1b[32m"
+#     YELLOW = "\x1b[33m"
+#     BLUE = "\x1b[34m"
+#     CYAN = "\x1b[36m"
+#     GREY = "\x1b[90m"
+
 class ColorCodes:
+    # Text Modifiers
     RESET = "\x1b[0m"
     BOLD = "\x1b[1m"
     DIM = "\x1b[2m"
-    RED = "\x1b[31m"
-    GREEN = "\x1b[32m"
-    YELLOW = "\x1b[33m"
-    BLUE = "\x1b[34m"
-    CYAN = "\x1b[36m"
-    GREY = "\x1b[90m"
+
+    # TrueColor Foreground Palette (24-bit RGB)
+    RED = "\x1b[38;2;237;135;150m"      # Soft Peach / Red
+    GREEN = "\x1b[38;2;166;218;149m"    # Sage Green
+    YELLOW = "\x1b[38;2;238;212;159m"   # Warm Gold / Yellow
+    BLUE = "\x1b[38;2;138;173;244m"     # Lavender / Blue
+    CYAN = "\x1b[38;2;139;213;202m"     # Muted Teal / Cyan
+    GREY = "\x1b[38;2;110;115;141m"     # Slate Grey
+
+    # Additional UI Utilities
+    SURFACE = "\x1b[48;2;54;58;79m"     # Background highlight for active menu items
+    TEXT_BRIGHT = "\x1b[38;2;202;211;245m" # Off-white primary text
 
 
 class Spinner:
@@ -192,11 +209,6 @@ def _normalize_readchar_key(k: str) -> Key | str:
 
 
 def _getch() -> Key | str:
-    # Prefer the OS-native readers below over `readchar`: readchar.readkey()
-    # does a *blocking* read to disambiguate a lone ESC from the start of an
-    # arrow-key sequence (both start with \x1b), so a bare Esc keypress hangs
-    # forever instead of cancelling. The termios/msvcrt paths use a short
-    # select()/prefix-byte check instead, so ESC-alone resolves immediately.
     try:
         import msvcrt
 
@@ -269,31 +281,25 @@ class MockArgs:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
-
-def _active_workspace_line(cfg) -> str:
-    ws = cfg.workspace_manager.current()
-    parts = [
-        f"{ColorCodes.BOLD}Active workspace:{ColorCodes.RESET} {ColorCodes.CYAN}{ws.name}{ColorCodes.RESET}"
-    ]
-    if ws.description:
-        parts.append(f"{ColorCodes.DIM}{ws.description}{ColorCodes.RESET}")
-    parts.append(f"{ColorCodes.DIM}({ws.id}){ColorCodes.RESET}")
-    return "  ".join(parts)
-
-
 def _render_home_banner(cfg) -> None:
     linked = "https://www.linkedin.com/in/aaryanverma"
     fig = Figlet(font="slant", width=200)
     banner = fig.renderText("GRAY BOX").rstrip()
-    print(f"{ColorCodes.GREY}{ColorCodes.BOLD}{banner}{ColorCodes.RESET}")
+    
+    # Print the banner and author with the new highlight color
+    print(f"{ColorCodes.BLUE}{ColorCodes.BOLD}{banner}{ColorCodes.RESET}")
     author = hyperlink("Aaryan Verma", linked)
     print()
-    print(
-        f"{ColorCodes.DIM}Made with ♥ by {author}{ColorCodes.RESET}"
-    )
-    print(f"{ColorCodes.DIM}{'─' * 90}{ColorCodes.RESET}")
-    print(f"{_active_workspace_line(cfg)}")
-    print(f"{ColorCodes.DIM}{'─' * 90}{ColorCodes.RESET}\n")
+    print(f"{ColorCodes.DIM} Made with ♥ by {author}{ColorCodes.RESET}\n")
+
+    # Get workspace info
+    ws = cfg.workspace_manager.current()
+    ws_info = f"{ws.name} ({ws.id})"
+    
+    # Render a modern rounded box for the workspace info
+    print(f"{ColorCodes.GREY}╭─────────────────────────────────────────────────────╮{ColorCodes.RESET}")
+    print(f"{ColorCodes.GREY}│{ColorCodes.RESET}  Active Workspace: {ColorCodes.GREEN}{ws_info:<33}{ColorCodes.RESET}{ColorCodes.GREY}│{ColorCodes.RESET}")
+    print(f"{ColorCodes.GREY}╰─────────────────────────────────────────────────────╯{ColorCodes.RESET}\n")
 
 
 def _move_cursor_up(lines: int) -> None:
@@ -516,14 +522,14 @@ def cmd_chat(args):
 
     print(
         f"{ColorCodes.BOLD}Chat mode{ColorCodes.RESET} "
-        f"{ColorCodes.DIM}— ask follow-ups in context."
-        f"Type 'exit' to leave.{ColorCodes.RESET}\n"
+        f"{ColorCodes.DIM}— ask follow-ups in context. "
+        f"Press ESC or Type 'exit' to leave.{ColorCodes.RESET}\n"
     )
 
     while True:
         try:
             q = _interactive_input(
-                f"{ColorCodes.BOLD}You {ColorCodes.DIM}(Type exit to end chat){ColorCodes.RESET}: "
+                f"{ColorCodes.BOLD}You {ColorCodes.DIM}(Press ESC or Type 'exit' to leave){ColorCodes.RESET}: "
             )
         except (EOFError, KeyboardInterrupt):
             break
@@ -1012,7 +1018,7 @@ def interactive_main(config_path=None):
         ("pages", "List all pages", "📄"),
         ("dupes", "Find possible duplicate pages", "🧬"),
         ("dashboard", "Generate HTML dashboard", "🌐"),
-        ("switch-workspace", "Switch workspace", "🪄"),
+        ("switch-workspace", "Switch workspace", "🔄"),
         ("create-workspace", "Create workspace", "➕"),
         ("exit", "Quit", "❌"),
     ]
