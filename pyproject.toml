@@ -42,7 +42,12 @@ packages = ["graybox", "graybox.ai"]
 include-package-data = true
 
 [tool.setuptools.exclude-package-data]
-"*" = ["*.ipynb", ".ipynb_checkpoints", "*.json", ".csv", "*.yaml", "*.yml"]
+"*" = [
+    "*.ipynb",
+    ".ipynb_checkpoints",
+    "*.json",
+    "*.csv",
+]
 
 [tool.coverage.run]
 omit = [

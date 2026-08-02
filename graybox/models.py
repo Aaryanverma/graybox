@@ -38,7 +38,18 @@ TYPE_DIR = {
 
 
 def now_iso() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    """UTC timestamp in ISO-8601 format, e.g. 2026-08-02T14:30:00Z."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def now_id_ts() -> str:
+    """Compact UTC timestamp for building filesystem-safe ids, e.g. 20260802-143000.
+    """
+    return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+
+def now_readable() -> str:
+    """Human-readable UTC timestamp, e.g. 2026-08-02 14:30:00."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 @dataclass
 class InboxItem:

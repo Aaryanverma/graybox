@@ -203,11 +203,14 @@ def _candidate_config_paths(path: str | None = None) -> list[Path]:
     if env_path and (not path or Path(env_path) != Path(path)):
         candidates.append(Path(env_path))
     local_default = Path("config.yaml")
-    app_default = Path.cwd() / ".graybox" / "config.yaml"
+    cwd_default = Path.cwd() / ".graybox" / "config.yaml"
+    home_default = Path.home() / ".graybox" / "config.yaml"
     if local_default not in candidates:
         candidates.append(local_default)
-    if app_default not in candidates:
-        candidates.append(app_default)
+    if cwd_default not in candidates:
+        candidates.append(cwd_default)
+    if home_default not in candidates:
+        candidates.append(home_default)
     return candidates
 
 

@@ -72,6 +72,17 @@ class TestLlmCall:
         messages = svc._build_messages(None, "user text")
         assert messages[0]["content"] == "You are a helpful assistant."
 
+    def test_streaming_call_returns_stream_wrapper(self, cfg):
+        svc = AIService(cfg)
+        fake_stream = SimpleNamespace()
+        with patch("graybox.ai.ai_service.completion", return_value=fake_stream):
+            result = svc.llm_call(system_prompt="sys", prompt="hi", stream=True)
+
+        assert result["response"] is fake_stream
+        assert result["logprobs"] is None
+        assert result["cost"] == 0.0
+        assert result["streaming"] is True
+
 
 class TestLlmCallBatch:
     def test_batch_call_extracts_all_responses(self, cfg):

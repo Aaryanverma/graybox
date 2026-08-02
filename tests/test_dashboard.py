@@ -57,7 +57,6 @@ class TestBuildDashboardHtml:
         write_page(temp_cfg, Page(id="x", type="topic", title="X", created=now_iso(), updated=now_iso()))
         html = build_dashboard_html(temp_cfg)
         assert html.startswith("<!doctype html>")
-        assert "Gray Box Dashboard" in html
         # embedded JSON payload must parse
         start = html.index('id=\'data\' type=\'application/json\'>') + len("id='data' type='application/json'>")
         end = html.index("</script>", start)

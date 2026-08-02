@@ -7,12 +7,12 @@ from typing import Sequence
 import json
 import re
 import shutil
-
+from importlib.resources import files
 import yaml
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _slugify(text: str) -> str:
@@ -297,7 +297,23 @@ class WorkspaceManager:
     def ensure_workspace(self, workspace_id: str | None = None) -> Workspace:
         ws = self.resolve(workspace_id) if workspace_id else self.current()
         ws.ensure_layout()
+        self._create_workspace_config(ws.root)
+        self._cache[ws.id] = ws
         return ws
+
+    def _create_workspace_config(self, workspace_root: Path) -> None:
+        config_path = workspace_root / "config.yaml"
+
+        if config_path.exists():
+            return
+
+        template = (
+            files("graybox")
+            .joinpath("config.example.yaml")
+            .read_text(encoding="utf-8")
+        )
+
+        config_path.write_text(template, encoding="utf-8")
 
     def current(self) -> Workspace:
         self.ensure_root()

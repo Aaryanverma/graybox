@@ -21,13 +21,12 @@ import json
 import re
 import secrets
 from pathlib import Path
-
 import yaml
 
 from graybox.config import Config
-from graybox.history_tracker import _maybe_record, _maybe_record_deletion
-from graybox.index import invalidate_page, invalidate_inbox, invalidate_all
-from graybox.models import TYPE_DIR, InboxItem, Page, now_iso
+from graybox.history_tracker import _maybe_record
+from graybox.index import invalidate_page, invalidate_inbox
+from graybox.models import TYPE_DIR, InboxItem, Page, now_iso, now_id_ts
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", re.DOTALL)
 
@@ -64,8 +63,7 @@ def ensure_workspace(cfg: Config) -> None:
 def write_inbox_item(cfg: Config, content: str) -> InboxItem:
     ensure_workspace(cfg)
     inbox_dir = cfg.inbox_dir
-    ts = now_iso().replace(":", "").replace("-", "").replace("Z", "")
-    item_id = f"{ts}-{secrets.token_hex(2)}"
+    item_id = f"{now_id_ts()}-{secrets.token_hex(2)}"
     body = (
         "---\n"
         + yaml.safe_dump({"id": item_id, "created": now_iso()}, sort_keys=False)
@@ -77,7 +75,6 @@ def write_inbox_item(cfg: Config, content: str) -> InboxItem:
     path.write_text(body, encoding="utf-8")
     invalidate_inbox(cfg, item_id)
     return InboxItem(id=item_id, created=now_iso(), content=content.strip(), path=str(path))
-
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
     m = FRONTMATTER_RE.match(text)
