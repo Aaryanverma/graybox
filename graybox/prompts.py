@@ -324,3 +324,34 @@ Instructions:
 - If the context does not contain enough information, reply exactly:
 "I don't have enough information in the knowledge base to answer that."
 """
+
+RETRIEVAL_COMPRESSION_PROMPT = """You are a highly efficient text summarizer. Summarize the following context.
+
+Requirements:
+- Preserve all factual information.
+- Preserve names.
+- Preserve dates.
+- Preserve numbers.
+- Preserve relationships.
+- Preserve evidence useful for answering questions.
+- Remove repetition.
+- Do not invent information.
+- Return only the compressed context."""
+
+HISTORY_COMPRESSION_PROMPT = """You are a highly efficient text summarizer. Summarize the following conversation history.
+
+Preserve:
+- user goals
+- entities
+- unresolved questions
+- important facts
+- constraints
+- numbers
+
+Remove:
+- repetition
+- greetings
+- filler
+
+Return only the condensed conversation.
+"""

@@ -6,8 +6,9 @@ Retrieval Agent.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import re
+from typing import Any
 
 from graybox.config import Config
 from graybox.ai import AIService
@@ -17,11 +18,14 @@ from graybox.prompts import (
     CHAT_RETRIEVAL_PROMPT_TMPL,
     QUERY_REPHRASE_SYSTEM_PROMPT_TMPL,
     QUERY_REPHRASE_PROMPT,
+    RETRIEVAL_COMPRESSION_PROMPT,
+    HISTORY_COMPRESSION_PROMPT,
 )
 from graybox.search import search_all
 from graybox.search_engine import Hit, _PageDoc
 from graybox.workspace import workspace_context_block
-from graybox.embedding_index import ensure_indexed, search_embeddings
+from graybox.embedding_index import search_embeddings
+from graybox.adaptive_compressor import compress_context
 
 logger = logging.getLogger(__name__)
 
@@ -54,19 +58,53 @@ NO_EVIDENCE_MSG = (
 MAX_HISTORY_TURNS = 10
 
 
-def _source_tag(hit: Hit, all_workspaces: bool = False) -> str:
-    if hit.workspace_id and all_workspaces:
-        return f"{hit.workspace_id}/{hit.doc.search_id}"
-    return hit.doc.search_id
+def _source_tag(hit, all_workspaces: bool) -> str:
+    doc = hit.doc
+    search_id = (
+        getattr(doc, "search_id", None) or getattr(hit, "search_id", None) or "unknown"
+    )
+
+    if not all_workspaces:
+        return search_id
+
+    workspace_id, workspace_name = _get_workspace_meta(hit)
+    workspace = workspace_name or workspace_id
+
+    # Safe fallback: do not invent provenance if we do not have it.
+    return f"{workspace}:{search_id}" if workspace else search_id
 
 
-def _build_history_block(history: list[ConversationTurn]) -> str:
+def _build_history_block(
+    history: list[ConversationTurn],
+    llm: AIService | None,
+) -> str:
     lines = []
-    for turn in history[-MAX_HISTORY_TURNS:]:
+    for turn in history:
         lines.append(f"User: {turn.question}")
         lines.append(f"Assistant: {turn.answer}")
-    return "\n".join(lines)
 
+    final_history = "\n".join(lines)
+
+    if not llm or len(history) <= MAX_HISTORY_TURNS:
+        return final_history
+
+    try:
+        params = llm.get_llm_params()
+        max_tokens = (
+            params.get("max_tokens")
+            or params.get("max_completion_tokens")
+            or 2048
+        )
+
+        return compress_context(
+            final_history,
+            llm=llm,
+            max_tokens=max_tokens,
+            prompt=HISTORY_COMPRESSION_PROMPT,
+        )
+
+    except:
+        return "\n".join(lines[-MAX_HISTORY_TURNS * 2 :])
 
 def _render_note(note: str) -> str:
     note = note.strip()
@@ -210,51 +248,52 @@ def _system_prompt(cfg: Config) -> str:
     return RETRIEVAL_SYSTEM
 
 
-def _blend_hits(
-    keyword_hits: list[Hit],
-    semantic_refs: list[tuple[str, float]],
-    cfg: Config,
-) -> list[Hit]:
-    from graybox.storage import read_page
+def _get_workspace_meta(hit: Any) -> tuple[str | None, str | None]:
+    doc = getattr(hit, "doc", None)
+    workspace_id = getattr(doc, "workspace_id", None) or getattr(
+        hit, "workspace_id", None
+    )
+    workspace_name = getattr(doc, "workspace_name", None) or getattr(
+        hit, "workspace_name", None
+    )
+    return workspace_id, workspace_name
 
-    keyword_by_ref: dict[str, Hit] = {h.doc.search_id: h for h in keyword_hits}
-    semantic_by_ref: dict[str, float] = {ref: score for ref, score in semantic_refs}
 
-    all_refs = set(keyword_by_ref) | set(semantic_by_ref)
-    blended: list[Hit] = []
+def _apply_workspace_meta(target: Any, source: Any) -> Any:
+    target_doc = getattr(target, "doc", None)
+    source_ws_id, source_ws_name = _get_workspace_meta(source)
 
-    for ref in all_refs:
-        kw_hit = keyword_by_ref.get(ref)
-        sem_score = semantic_by_ref.get(ref, 0.0)
+    if target_doc is None:
+        return target
 
-        if kw_hit and sem_score > 0:
-            blended_score = 0.6 * kw_hit.score + 0.4 * sem_score
-            blended.append(
-                Hit(
-                    doc=kw_hit.doc,
-                    score=round(blended_score, 4),
-                    workspace_id=kw_hit.workspace_id,
-                    workspace_name=kw_hit.workspace_name,
-                )
-            )
-        elif kw_hit:
-            blended.append(kw_hit)
-        else:
-            page_type, slug = ref.split("/", 1)
-            page = read_page(cfg, page_type, slug)
-            if page:
-                adjusted = round(sem_score * 0.85, 4)
-                blended.append(
-                    Hit(
-                        doc=_PageDoc(page),
-                        score=adjusted,
-                        workspace_id="",
-                        workspace_name="",
-                    )
-                )
+    if source_ws_id and not getattr(target_doc, "workspace_id", None):
+        setattr(target_doc, "workspace_id", source_ws_id)
 
-    blended.sort(key=lambda h: h.score, reverse=True)
-    return blended
+    if source_ws_name and not getattr(target_doc, "workspace_name", None):
+        setattr(target_doc, "workspace_name", source_ws_name)
+
+    return target
+
+
+def _blend_hits(keyword_hits, semantic_hits, cfg):
+    by_search_id = {h.doc.search_id: h for h in keyword_hits}
+    blended = list(keyword_hits)
+
+    for sem in semantic_hits:
+        sid = sem.doc.search_id
+        existing = by_search_id.get(sid)
+
+        if existing is not None:
+            # Merge score, but keep canonical provenance from the keyword hit.
+            existing.score = max(existing.score, sem.score)
+            _apply_workspace_meta(existing, sem)
+            continue
+
+        # If the semantic hit already has provenance, keep it.
+        # If not, leave it as-is; _source_tag() will fall back safely.
+        blended.append(sem)
+
+    return sorted(blended, key=lambda h: h.score, reverse=True)
 
 
 def _expand_graph(cfg, hits, *, max_hops=1, max_nodes=15, decay=0.65):
@@ -317,7 +356,7 @@ def _prepare_search_query(
     if not history:
         return question
 
-    history_block = _build_history_block(history)
+    history_block = _build_history_block(history, llm)
     prompt = QUERY_REPHRASE_PROMPT.format(history=history_block, question=question)
     text = llm.llm_call(system_prompt=QUERY_REPHRASE_SYSTEM_PROMPT_TMPL, prompt=prompt)
     if text["response"] is None:
@@ -370,11 +409,7 @@ def ask(
 
     if wiki_hits and not all_workspaces:
         # Keep only strong search matches.
-        primary_hits = [
-            h
-            for h in wiki_hits
-            if h.score >= cfg.retrieval.min_score
-        ]
+        primary_hits = [h for h in wiki_hits if h.score >= cfg.retrieval.min_score]
 
         # Expand only from high-confidence pages.
         wiki_hits = _expand_graph(
@@ -398,16 +433,23 @@ def ask(
 
         wiki_hits = deduped
 
-    history_block = _build_history_block(history)
+    history_block = _build_history_block(history, llm)
 
     if wiki_hits:
         context = _build_context(wiki_hits, all_workspaces=all_workspaces)
+
+        max_tokens = cfg.llm.max_tokens or cfg.llm.max_completion_tokens or 8196
+        context = compress_context(
+            context, llm, max_tokens=max_tokens, prompt=RETRIEVAL_COMPRESSION_PROMPT
+        )
+
         if history_block:
             prompt = CHAT_RETRIEVAL_PROMPT_TMPL.format(
                 history=history_block, context=context, question=question
             )
         else:
             prompt = RETRIEVAL_PROMPT_TMPL.format(context=context, question=question)
+
         text = llm.llm_call(system_prompt=_system_prompt(cfg), prompt=prompt)
         if text["response"] is not None:
             return Answer(
@@ -419,14 +461,21 @@ def ask(
 
     if inbox_hits:
         context = _build_context(inbox_hits, all_workspaces=all_workspaces)
+
+        max_tokens = cfg.llm.max_tokens or cfg.llm.max_completion_tokens or 8196
+        context = compress_context(
+            context, llm, max_tokens=max_tokens, prompt=RETRIEVAL_COMPRESSION_PROMPT
+        )
+
         if history_block:
             prompt = CHAT_RETRIEVAL_PROMPT_TMPL.format(
                 history=history_block, context=context, question=question
             )
         else:
             prompt = RETRIEVAL_PROMPT_TMPL.format(context=context, question=question)
+
         text = llm.llm_call(system_prompt=_system_prompt(cfg), prompt=prompt)
-        if text["response"] is None:
+        if text and text.get("response"):
             return Answer(
                 text=NO_EVIDENCE_MSG, sources=[], grounded=False, fallback=False
             )

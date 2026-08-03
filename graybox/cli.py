@@ -525,11 +525,11 @@ def cmd_chat(args):
         f"{ColorCodes.DIM}— ask follow-ups in context. "
         f"Press ESC or Type 'exit' to leave.{ColorCodes.RESET}\n"
     )
-
+    print("✨ Welcome to Gray Box! How can I assist you today?\n")
     while True:
         try:
             q = _interactive_input(
-                f"{ColorCodes.BOLD}You {ColorCodes.DIM}(Press ESC or Type 'exit' to leave){ColorCodes.RESET}: "
+                f"{ColorCodes.BOLD}You{ColorCodes.RESET}: "
             )
         except (EOFError, KeyboardInterrupt):
             break
