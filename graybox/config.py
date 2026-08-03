@@ -79,6 +79,8 @@ class LLMConfig:
     api_type: str = "chat_completion"
     max_tokens: int = 1024
     max_completion_tokens: int = 1024
+    top_p: float = 0.95
+    top_k: int = 40
     kwargs: dict = field(default_factory=dict)
 
 
@@ -204,13 +206,16 @@ def _candidate_config_paths(path: str | None = None) -> list[Path]:
         candidates.append(Path(env_path))
     local_default = Path("config.yaml")
     cwd_default = Path.cwd() / ".graybox" / "config.yaml"
-    home_default = Path.home() / ".graybox" / "config.yaml"
     if local_default not in candidates:
         candidates.append(local_default)
     if cwd_default not in candidates:
         candidates.append(cwd_default)
-    if home_default not in candidates:
-        candidates.append(home_default)
+    # A stray ~/.graybox/config.yaml on a dev/CI machine shouldn't silently
+    # override project-local config, so this fallback is opt-in only.
+    if os.environ.get("GRAYBOX_USE_GLOBAL_CONFIG"):
+        home_default = Path.home() / ".graybox" / "config.yaml"
+        if home_default not in candidates:
+            candidates.append(home_default)
     return candidates
 
 

@@ -58,8 +58,11 @@ def _safe_date(value: str) -> date | None:
     value = (value or "").strip()
     if not value:
         return None
+    dt = _safe_dt(value)
+    if dt:
+        return dt.date()
     try:
-        return date.fromisoformat(value[:10])
+        return date.fromisoformat(value)
     except ValueError:
         return None
 

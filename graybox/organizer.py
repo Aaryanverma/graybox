@@ -25,7 +25,8 @@ from graybox.storage import (
 from graybox.workspace import workspace_context_block
 from graybox.summarizer import refresh_page_summary
 from graybox.embedding_index import ensure_indexed
-from graybox.search_engine import _PageDoc, Engine, Query
+from graybox.search_engine import _PageDoc, Engine, Query, Hit
+from graybox.search import search_all
 
 
 def _strip_code_fence(text: str) -> str:
@@ -76,7 +77,13 @@ def _get_or_create_page(cfg: Config, page_type: str, name: str, aliases: list[st
         aliases=list(dict.fromkeys(aliases)), summary=summary,
     ), True
 
-
+def _merge_unique(target: list[str], values: list[str]) -> None:
+    seen = set(target)
+    for raw in values or []:
+        value = (raw or "").strip()
+        if value and value not in seen:
+            target.append(value)
+            seen.add(value)
 
 def _append_note(page: Page, text: str, source_id: str, raw: str = "") -> None:
     line = f"- ({now_iso()}) {text.strip()} _(source: inbox/{source_id})_"
@@ -106,10 +113,50 @@ def _system_prompt(cfg: Config) -> str:
         return f"{ORGANIZER_SYSTEM}\n\nWorkspace context:\n{ctx}"
     return ORGANIZER_SYSTEM
 
+def _format_existing_context(hits: list[Hit]) -> str:
+    """Render retrieved existing pages (of ANY type) as compact reference
+    lines the LLM can match a note against - enough to identify 'this note
+    updates that page' without blowing up prompt size.
+    """
+    if not hits:
+        return "(none found)"
+    lines: list[str] = []
+    for h in hits:
+        p = h.doc.page
+        parts = [f'- {p.ref} [{p.type}] "{p.title}"']
+        if p.status:
+            parts.append(f"status={p.status}")
+        if p.owner:
+            parts.append(f"owner={p.owner}")
+        if p.due:
+            parts.append(f"due={p.due}")
+        if p.date:
+            parts.append(f"date={p.date}")
+        line = " ".join(parts)
+        if p.summary:
+            line += f"\n  summary: {p.summary.strip()}"
+        lines.append(line)
+    return "\n".join(lines)
+
+def _gather_existing_context(cfg: Config, item_content: str, top_k: int = 10) -> str:
+    """Retrieve existing wiki pages of ANY type related to this note BEFORE
+    extraction, so the organizer can reconcile state changes against what
+    already exists - regardless of whether the existing page is a task,
+    project, decision, meeting, or any other entity type - instead of
+    blindly creating disconnected duplicates with no memory of each other.
+
+    Uses a lower, fixed min_score than normal retrieval (0.3 vs. the usual
+    ~0.4+ answer-grounding floor) since this is candidate context for the
+    LLM to reconcile against, not a final grounded answer - false
+    positives here just mean an extra reference line, not a wrong claim.
+    """
+    wiki_hits, _ = search_all(cfg, item_content, top_k=top_k, min_score=0.3)
+    return _format_existing_context(wiki_hits)
 
 def process_item(cfg: Config, llm: AIService, item_id: str, item_content: str,
                   dry_run: bool = False) -> list[str]:
-    prompt = ORGANIZER_PROMPT_TMPL.format(note=item_content)
+    existing_context = _gather_existing_context(cfg, item_content)
+    prompt = ORGANIZER_PROMPT_TMPL.format(note=item_content, existing_context=existing_context)
     raw = llm.llm_call(system_prompt=_system_prompt(cfg), prompt=prompt)
     if raw["response"] is None:
         raise RuntimeError("LLM call failed — check logs/config for the underlying API error.")
@@ -129,11 +176,46 @@ def process_item(cfg: Config, llm: AIService, item_id: str, item_content: str,
         etype = ent.get("type", "topic")
         if etype not in TYPE_DIR:
             etype = "topic"
+
         name = ent.get("name", "").strip()
         if not name:
             continue
-        page, new = _get_or_create_page(cfg, etype, name, ent.get("aliases", []) or [], "")
-        _append_note(page, ent.get("summary", "") or f"Mentioned in note.", item_id, raw=item_content)
+
+        page, new = _get_or_create_page(
+            cfg,
+            etype,
+            name,
+            ent.get("aliases", []) or [],
+            "",
+        )
+
+        # Merge current-state fields that the Page model actually stores.
+        if ent.get("summary"):
+            page.summary = ent["summary"].strip()
+
+        if ent.get("status"):
+            page.status = ent["status"].strip()
+
+        if etype == "meeting":
+            if ent.get("date"):
+                page.date = ent["date"].strip()
+            _merge_unique(page.attendees, ent.get("attendees", []) or [])
+
+        if etype == "action":
+            if ent.get("owner"):
+                page.owner = ent["owner"].strip()
+            if ent.get("due"):
+                page.due = ent["due"].strip()
+
+        _merge_unique(page.aliases, ent.get("aliases", []) or [])
+        _merge_unique(page.tags, ent.get("tags", []) or [])
+
+        _append_note(
+            page,
+            ent.get("summary", "") or "Mentioned in note.",
+            item_id,
+            raw=item_content,
+        )
         touch(page, new)
         name_to_page[name.lower()] = page
 
@@ -158,7 +240,7 @@ def process_item(cfg: Config, llm: AIService, item_id: str, item_content: str,
         if not title:
             continue
         page, new = _get_or_create_page(cfg, "task", title, [], "")
-        page.status = task.get("status", "open") or "open"
+        page.status = (task.get("status", "open") or "open").replace("_", "-").strip()
         owner = task.get("owner", "")
         due = task.get("due", "")
         if owner:

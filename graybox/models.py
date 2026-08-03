@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Any
 
 PAGE_TYPES = (
     "project",
@@ -111,3 +112,5 @@ class Page:
         if self.summary_refreshed_at:
             fm["summary_refreshed_at"] = self.summary_refreshed_at
         return fm
+
+    extra: dict[str, Any] = field(default_factory=dict)
