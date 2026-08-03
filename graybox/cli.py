@@ -199,7 +199,7 @@ def _normalize_readchar_key(k: str) -> Key | str:
             return Key.LEFT
         if k == getattr(readchar.key, "RIGHT", object()):
             return Key.RIGHT
-        if k == getattr(readchar.key, "ENTER", object()) or k in ("\n", "\n"):
+        if k == getattr(readchar.key, "ENTER", object()) or k in ("\n", "\r"):
             return Key.ENTER
         if k == getattr(readchar.key, "ESC", object()) or k == "\x1b":
             return Key.ESC

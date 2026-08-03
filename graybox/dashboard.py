@@ -54,20 +54,6 @@ STATUS_META = {
     "": {"label": "No status", "color": "#CBD5E0", "icon": "\u00B7"},
 }
 
-STOPWORDS = {
-    "the", "a", "an", "is", "are", "was", "were", "to", "of", "in", "on", "for",
-    "and", "or", "with", "this", "that", "it", "as", "at", "by", "be", "been",
-    "have", "has", "had", "do", "does", "did", "done", "can", "could", "would",
-    "should", "will", "shall", "may", "might", "must", "who", "what", "when",
-    "where", "why", "how", "which", "whom", "whose", "you", "he", "she", "we",
-    "they", "me", "him", "her", "us", "them", "my", "your", "his", "its",
-    "our", "their", "mine", "yours", "hers", "ours", "theirs", "myself",
-    "yourself", "himself", "herself", "itself", "ourselves", "yourselves",
-    "themselves",
-}
-TOKEN_RE = re.compile(r"[a-z0-9]+")
-
-
 def _safe_date(value: str) -> date | None:
     value = (value or "").strip()
     if not value:
@@ -82,7 +68,12 @@ def _safe_dt(value: str) -> datetime | None:
     value = (value or "").strip()
     if not value:
         return None
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S%z", "%Y-%m-%dT%H:%M:%S"):
+    for fmt in (
+        "%Y-%m-%dT%H:%M:%SZ",     # current now_iso() format (UTC, explicit Z)
+        "%Y-%m-%d %H:%M:%S",      # legacy naive-local format (pre-UTC-ISO change)
+        "%Y-%m-%d %H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S",
+    ):
         try:
             return datetime.strptime(value, fmt)
         except ValueError:

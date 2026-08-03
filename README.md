@@ -123,7 +123,7 @@ Then point it at an LLM. Set your API key however your provider expects it — e
 
 - Open a terminal/CMD
 
-- In your working directory, update the `config.yaml` file with your workspace, LLM and other details. If this file is not found then download from [here](graybox/config.example.yaml) into your working directory and update it.
+- Download this [Config File](graybox/config.example.yaml) into your working directory, update it with your workspace, LLM and other details.
  
 - The fastest way to try Gray Box is to just run it with no arguments and let the interactive menu guide you:
  
