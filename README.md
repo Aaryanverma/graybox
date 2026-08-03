@@ -234,11 +234,15 @@ Graybox searches for configuration in this order:
 3. `config.yaml`
 4. `.graybox/config.yaml`
 
-For reproducible project behavior, `~/.graybox/config.yaml` is **not** loaded by default. To enable it as a fallback, set:
+<small>
+Note: For reproducible project behavior, `~/.graybox/config.yaml` is **not** loaded by default. To enable it as a fallback, set:
 
 ```bash
 export GRAYBOX_USE_GLOBAL_CONFIG=1
 ```
+</small>
+
+Sample Config File
 
 ```yaml
 root: ".graybox"          # app root inside the current terminal directory
@@ -438,7 +442,7 @@ Longevity and inspectability. A `.md` file with YAML frontmatter opens in litera
 
 ## Roadmap
 
-- [ ] Dashboard Improvements
+- [ ] Dashboard Improvements (WIP)
 - [ ] Decision Intelligence & Memory Timeline
 - [ ] Meeting summarization
 - [ ] Automatic daily journal digest
