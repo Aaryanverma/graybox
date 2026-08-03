@@ -49,6 +49,9 @@ include-package-data = true
     "*.csv",
 ]
 
+[tool.setuptools_scm]
+local_scheme = "no-local-version"
+
 [tool.coverage.run]
 omit = [
     "graybox/cli.py",
