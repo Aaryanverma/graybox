@@ -19,7 +19,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest==9.0.3", "pytest-asyncio==1.0.0"]
+test = ["pytest==8.3.4", "pytest-asyncio==1.0.0"]
 
 [project.urls]
 Homepage = "https://github.com/Aaryanverma/graybox"
