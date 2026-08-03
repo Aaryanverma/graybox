@@ -3,7 +3,7 @@ name: Release Python Package
 on:
   push:
     tags:
-      - "v*"
+      - "*"
   workflow_dispatch:
 
 jobs:
