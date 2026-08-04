@@ -111,6 +111,8 @@ class Page:
             fm["due"] = self.due
         if self.summary_refreshed_at:
             fm["summary_refreshed_at"] = self.summary_refreshed_at
+        if self.extra:
+            fm["extra"] = self.extra
         return fm
 
     extra: dict[str, Any] = field(default_factory=dict)

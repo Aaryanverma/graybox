@@ -120,29 +120,17 @@ def _render_note(note: str) -> str:
     src = (m.group("src") or "").strip()
 
     out = [f"[{ts}]", body]
+
+    continuation = "\n".join(
+        line.strip().lstrip(">").strip() for line in rest if line.strip()
+    )
+    if continuation:
+        out.append(continuation)
+
     if src:
         out.append(f"Source: {src}")
 
     return "\n".join(out)
-
-
-# def _build_context(hits: list[Hit], all_workspaces: bool = False) -> str:
-#     blocks = []
-#     for h in hits:
-#         if h.doc.source_kind == "wiki":
-#             p = h.doc.page
-#             note_text = "\n".join(p.notes) if p.notes else p.summary
-#             tag = _source_tag(h, all_workspaces)
-#             provenance = f" (linked from {h.linked_from})" if h.linked_from else ""
-#             meta = f"(created: {p.created} | last updated: {p.updated})"
-#             blocks.append(
-#                 f"[{tag}]{provenance} {p.title} {meta}\n{p.summary}\n{note_text}".strip()
-#             )
-#         else:
-#             tag = _source_tag(h, all_workspaces)
-#             meta = f"(captured: {h.doc.item.created})"
-#             blocks.append(f"[{tag}] (raw capture) {meta}\n{h.doc.item.content}".strip())
-#     return "\n\n---\n\n".join(blocks)
 
 
 def _build_context(hits: list[Hit], all_workspaces: bool = False) -> str:
@@ -275,25 +263,49 @@ def _apply_workspace_meta(target: Any, source: Any) -> Any:
     return target
 
 
-def _blend_hits(keyword_hits, semantic_hits, cfg):
-    by_search_id = {h.doc.search_id: h for h in keyword_hits}
-    blended = list(keyword_hits)
+def _blend_hits(keyword_hits: list[Hit], semantic_refs: list[tuple[str, float]], cfg) -> list[Hit]:
+    """Merge keyword Hits with semantic search results.
 
-    for sem in semantic_hits:
-        sid = sem.doc.search_id
-        existing = by_search_id.get(sid)
+    `semantic_refs` is whatever `search_embeddings()` returns:
+    `list[tuple[ref, score]]` — plain (ref, score) pairs, not Hit objects.
+    (embedding_index.EmbeddingIndex.search() has always returned this
+    shape; nothing about it changed.)
 
-        if existing is not None:
-            # Merge score, but keep canonical provenance from the keyword hit.
-            existing.score = max(existing.score, sem.score)
-            _apply_workspace_meta(existing, sem)
-            continue
+    A page found by both keyword and semantic search gets a weighted blend
+    favoring the keyword score (which reflects lexical/title relevance more
+    reliably); a page found only semantically is included but damped, since
+    it has no lexical corroboration.
+    """
+    from graybox.storage import read_page
 
-        # If the semantic hit already has provenance, keep it.
-        # If not, leave it as-is; _source_tag() will fall back safely.
-        blended.append(sem)
+    keyword_by_ref = {h.doc.search_id: h for h in keyword_hits}
+    semantic_by_ref = {ref: score for ref, score in semantic_refs}
+    all_refs = set(keyword_by_ref) | set(semantic_by_ref)
 
-    return sorted(blended, key=lambda h: h.score, reverse=True)
+    blended: list[Hit] = []
+    for ref in all_refs:
+        kw_hit = keyword_by_ref.get(ref)
+        sem_score = semantic_by_ref.get(ref, 0.0)
+
+        if kw_hit and sem_score > 0:
+            blended_score = round(0.6 * kw_hit.score + 0.4 * sem_score, 4)
+            blended.append(Hit(
+                doc=kw_hit.doc, score=blended_score,
+                workspace_id=kw_hit.workspace_id, workspace_name=kw_hit.workspace_name,
+                linked_from=kw_hit.linked_from,
+            ))
+        elif kw_hit:
+            blended.append(kw_hit)
+        else:
+            page_type, slug = ref.split("/", 1)
+            page = read_page(cfg, page_type, slug)
+            if page is None:
+                continue
+            adjusted = round(sem_score * 0.85, 4)
+            blended.append(Hit(doc=_PageDoc(page), score=adjusted))
+
+    blended.sort(key=lambda h: h.score, reverse=True)
+    return blended
 
 
 def _expand_graph(cfg, hits, *, max_hops=1, max_nodes=15, decay=0.65):
@@ -475,10 +487,8 @@ def ask(
             prompt = RETRIEVAL_PROMPT_TMPL.format(context=context, question=question)
 
         text = llm.llm_call(system_prompt=_system_prompt(cfg), prompt=prompt)
-        if text and text.get("response"):
-            return Answer(
-                text=NO_EVIDENCE_MSG, sources=[], grounded=False, fallback=False
-            )
+        if not text or not text.get("response"):
+            return Answer(text=NO_EVIDENCE_MSG, sources=[], grounded=False, fallback=False)
 
         return Answer(
             text=text["response"].strip(),

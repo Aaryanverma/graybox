@@ -210,12 +210,10 @@ def _candidate_config_paths(path: str | None = None) -> list[Path]:
         candidates.append(local_default)
     if cwd_default not in candidates:
         candidates.append(cwd_default)
-    # A stray ~/.graybox/config.yaml on a dev/CI machine shouldn't silently
-    # override project-local config, so this fallback is opt-in only.
-    if os.environ.get("GRAYBOX_USE_GLOBAL_CONFIG"):
-        home_default = Path.home() / ".graybox" / "config.yaml"
-        if home_default not in candidates:
-            candidates.append(home_default)
+
+    home_default = Path.home() / ".graybox" / "config.yaml"
+    if home_default not in candidates:
+        candidates.append(home_default)
     return candidates
 
 

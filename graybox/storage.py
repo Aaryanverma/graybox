@@ -1,4 +1,3 @@
-
 """
 Storage layer. Everything is plain files on disk.
 
@@ -243,6 +242,7 @@ def _parse_page(path: Path) -> Page:
         date=fm.get("date", "") or "",
         owner=fm.get("owner", "") or "",
         due=fm.get("due", "") or "",
+        extra=fm.get("extra", {}) or {},
         summary_refreshed_at=fm.get("summary_refreshed_at", "") or "",
         path=str(path),
     )
