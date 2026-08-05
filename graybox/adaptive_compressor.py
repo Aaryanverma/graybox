@@ -31,7 +31,7 @@ def compress_context(
     try:
         model_max_tokens = get_max_tokens(llm.get_llm_params()["model"])
     except Exception as e:
-        logger.warning(
+        logger.info(
             "Could not determine max tokens for model (%s); using a conservative default of %d.",
             e, _FALLBACK_MODEL_MAX_TOKENS,
         )

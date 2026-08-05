@@ -9,6 +9,7 @@ import logging
 from dataclasses import dataclass
 import re
 from typing import Any
+from collections import deque
 
 from graybox.config import Config
 from graybox.ai import AIService
@@ -26,6 +27,7 @@ from graybox.search_engine import Hit, _PageDoc
 from graybox.workspace import workspace_context_block
 from graybox.embedding_index import search_embeddings
 from graybox.adaptive_compressor import compress_context
+from graybox.storage import read_page
 
 logger = logging.getLogger(__name__)
 
@@ -262,6 +264,47 @@ def _apply_workspace_meta(target: Any, source: Any) -> Any:
 
     return target
 
+def _semantic_hits_all_workspaces(cfg, query_embedding, *, top_k: int, min_score: float) -> list[Hit]:
+    hits: list[Hit] = []
+    workspaces = cfg.workspace_manager.list()
+
+    for ws in workspaces:
+        ws_cfg = cfg.for_workspace(ws)
+        refs = search_embeddings(
+            ws_cfg,
+            query_embedding,
+            top_k=top_k,
+            min_score=min_score,
+        )
+        for ref, score in refs:
+            page_type, slug = ref.split("/", 1)
+            page = read_page(ws_cfg, page_type, slug)
+            if page is None:
+                continue
+
+            hits.append(
+                Hit(
+                    doc=_PageDoc(page),
+                    score=score,
+                    workspace_id=ws.id,
+                    workspace_name=ws.name,
+                )
+            )
+
+    hits.sort(key=lambda h: h.score, reverse=True)
+
+    # Deduplicate by workspace + ref, not just ref.
+    seen: set[tuple[str, str]] = set()
+    deduped: list[Hit] = []
+    for h in hits:
+        key = (h.workspace_id, h.doc.search_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(h)
+
+    return deduped[:top_k]
+
 
 def _blend_hits(keyword_hits: list[Hit], semantic_refs: list[tuple[str, float]], cfg) -> list[Hit]:
     """Merge keyword Hits with semantic search results.
@@ -307,55 +350,69 @@ def _blend_hits(keyword_hits: list[Hit], semantic_refs: list[tuple[str, float]],
     blended.sort(key=lambda h: h.score, reverse=True)
     return blended
 
-
-def _expand_graph(cfg, hits, *, max_hops=1, max_nodes=15, decay=0.65):
+def _expand_graph(
+    cfg,
+    hits,
+    *,
+    max_hops: int = 1,
+    max_nodes: int = 25,
+    max_neighbors_per_node: int = 5,
+    decay: float = 0.65,
+    graph_min_score: float = 0.35,
+):
     from graybox.storage import read_page
 
     wiki_hits = [h for h in hits if h.doc.source_kind == "wiki"]
     if not wiki_hits:
         return hits
 
-    seen = {h.doc.search_id for h in wiki_hits}
-    score_by_ref = {h.doc.search_id: h.score for h in wiki_hits}
-    title_by_ref = {h.doc.search_id: h.doc.page.title for h in wiki_hits}
-    frontier = list(seen)
+    # Keep the best hit per ref as the starting frontier.
+    best_by_ref: dict[str, Hit] = {h.doc.search_id: h for h in wiki_hits}
+    frontier = deque((h.doc.search_id, 0, h.score) for h in wiki_hits)
+
+    seen: set[str] = set(best_by_ref.keys())
     expanded: list[Hit] = []
 
-    for hop in range(max_hops):
-        if len(seen) >= max_nodes:
-            break
-        next_frontier = []
-        for ref in frontier:
-            if len(seen) >= max_nodes:
-                break
-            page_type, slug = ref.split("/", 1)
-            page = read_page(cfg, page_type, slug)
-            if not page:
-                continue
-            neighbors = set(page.related) | set(page.backlinks)
-            for n_ref in neighbors:
-                if n_ref in seen or len(seen) >= max_nodes:
-                    continue
-                n_type, n_slug = n_ref.split("/", 1)
-                n_page = read_page(cfg, n_type, n_slug)
-                if not n_page:
-                    continue
-                base = score_by_ref.get(ref, 0.5)
-                new_score = round(base * (decay ** (hop + 1)), 4)
-                expanded.append(
-                    Hit(
-                        doc=_PageDoc(n_page),
-                        score=new_score,
-                        linked_from=title_by_ref.get(ref, ref),
-                    )
-                )
-                score_by_ref[n_ref] = new_score
-                title_by_ref[n_ref] = n_page.title
-                seen.add(n_ref)
-                next_frontier.append(n_ref)
-        frontier = next_frontier
+    while frontier and len(seen) < max_nodes:
+        ref, hop, parent_score = frontier.popleft()
+        if hop >= max_hops:
+            continue
 
-    out = hits + expanded
+        page_type, slug = ref.split("/", 1)
+        page = read_page(cfg, page_type, slug)
+        if not page:
+            continue
+
+        # Deterministic fanout cap. No full-graph traversal.
+        neighbors = sorted(set(page.related) | set(page.backlinks))
+        neighbors = neighbors[:max_neighbors_per_node]
+
+        for n_ref in neighbors:
+            if n_ref in seen or len(seen) >= max_nodes:
+                continue
+
+            n_type, n_slug = n_ref.split("/", 1)
+            n_page = read_page(cfg, n_type, n_slug)
+            if not n_page:
+                continue
+
+            new_score = round(parent_score * (decay ** (hop + 1)), 4)
+            if new_score < graph_min_score:
+                continue
+
+            hit = Hit(
+                doc=_PageDoc(n_page),
+                score=new_score,
+                linked_from=getattr(page, "title", ref),
+            )
+            expanded.append(hit)
+            best_by_ref[n_ref] = hit
+            seen.add(n_ref)
+
+            # Only expand the promising neighbors.
+            frontier.append((n_ref, hop + 1, new_score))
+
+    out = list(best_by_ref.values()) + expanded
     out.sort(key=lambda h: h.score, reverse=True)
     return out
 
@@ -402,41 +459,49 @@ def ask(
         try:
             emb_result = llm.embedding_call(search_query)
             if emb_result and emb_result.get("embedding"):
-                semantic_refs = search_embeddings(
-                    cfg,
-                    emb_result["embedding"],
-                    top_k=cfg.retrieval.top_k,
-                    min_score=cfg.retrieval.min_score,
-                )
-                if semantic_refs:
-                    wiki_hits = _blend_hits(wiki_hits, semantic_refs, cfg)
+                if all_workspaces:
+                    semantic_hits = _semantic_hits_all_workspaces(
+                        cfg,
+                        emb_result["embedding"],
+                        top_k=cfg.retrieval.top_k,
+                        min_score=cfg.retrieval.min_score,
+                    )
+                    if semantic_hits:
+                        # Merge semantic hits directly with keyword hits.
+                        wiki_hits = wiki_hits + semantic_hits
+                        wiki_hits.sort(key=lambda h: h.score, reverse=True)
+                else:
+                    semantic_refs = search_embeddings(
+                        cfg,
+                        emb_result["embedding"],
+                        top_k=cfg.retrieval.top_k,
+                        min_score=cfg.retrieval.min_score,
+                    )
+                    if semantic_refs:
+                        wiki_hits = _blend_hits(wiki_hits, semantic_refs, cfg)
             elif emb_result is None:
-                logger.warning(
-                    "Embedding call returned no result — check embeddings.model_name in config.yaml"
-                )
+                logger.warning("Embedding call returned no result — check embeddings.model_name in config.yaml")
         except Exception as e:
-            logger.warning(
-                "Semantic search failed (%s), falling back to keyword-only", e
-            )
+            logger.warning("Semantic search failed (%s), falling back to keyword-only", e)
 
     if wiki_hits and not all_workspaces:
-        # Keep only strong search matches.
         primary_hits = [h for h in wiki_hits if h.score >= cfg.retrieval.min_score]
 
-        # Expand only from high-confidence pages.
         wiki_hits = _expand_graph(
             cfg,
             primary_hits,
-            max_hops=1,
-            max_nodes=cfg.retrieval.top_k * 3,
+            max_hops=getattr(cfg.retrieval, "graph_max_hops", 1),
+            max_nodes=getattr(cfg.retrieval, "graph_max_nodes", cfg.retrieval.top_k * 3),
+            max_neighbors_per_node=getattr(
+                cfg.retrieval, "graph_max_neighbors_per_node", 5
+            ),
+            decay=getattr(cfg.retrieval, "graph_decay", 0.65),
+            graph_min_score=getattr(cfg.retrieval, "graph_min_score", 0.35),
         )
 
-        # Remove duplicate pages.
         seen = set()
         deduped = []
         for h in wiki_hits:
-            if h.score < cfg.retrieval.min_score:
-                continue
             ref = h.doc.search_id
             if ref in seen:
                 continue
