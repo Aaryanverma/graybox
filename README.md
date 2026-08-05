@@ -3,6 +3,8 @@
 <!-- ![# Gray Box](assets/brand_logo.png) -->
 
 <img alt="Gray Box" src="assets/brand_logo.svg" width="50%">
+<br>
+<small><i>Remember Better.</i></small><br><br>
 
 **A local-first, long-term memory for anything you'd otherwise forget.**
 
@@ -14,6 +16,7 @@ Talk to it like a notebook. It quietly turns your notes into a living, cross-lin
 
 ![Build Status](https://github.com/Aaryanverma/graybox/actions/workflows/run-tests.yml/badge.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?color=green)](https://opensource.org/licenses/MIT)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/graybox?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=BLUE&left_text=downloads)](https://pepy.tech/projects/graybox)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Aaryanverma/graybox)
 
 </div>

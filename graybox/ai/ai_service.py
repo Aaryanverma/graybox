@@ -11,6 +11,7 @@ from tenacity import (
     wait_exponential,
     retry_if_exception_type,
 )
+from graybox.ai import AuthenticationManager
 from litellm import (
     completion,
     embedding,
@@ -46,14 +47,14 @@ def empty_decorator(fn):
 class AIService:
     def __init__(self, config):
         self.config = config
+        self._authentication = AuthenticationManager()
 
     def get_llm_params(self, **kwargs):
         """Update LLM parameters in config at runtime"""
         cfg = self.config.llm
-        model = f"{cfg.model_name}"
+        model = cfg.model_name
         base_url = cfg.base_url or os.environ.get("GRAYBOX_LLM_BASE_URL")
         api_base = cfg.api_base or os.environ.get("GRAYBOX_LLM_API_BASE")
-        azure_ad_token = cfg.azure_ad_token or os.environ.get("AZURE_AD_TOKEN")
         api_key = cfg.api_key or os.environ.get("GRAYBOX_LLM_API_KEY")
         api_version = cfg.api_version
         deployment_id = cfg.deployment_id
@@ -62,8 +63,8 @@ class AIService:
         final_kwargs = cfg.kwargs.copy()
         final_kwargs.update(kwargs)
 
-        if azure_ad_token:
-            final_kwargs["azure_ad_token"] = azure_ad_token
+        final_kwargs.update(self._authentication.get_auth_kwargs(cfg))
+
         if api_version:
             final_kwargs["api_version"] = api_version
         if deployment_id:
@@ -82,7 +83,7 @@ class AIService:
     def get_embedding_params(self, **kwargs):
         """Update embedding parameters in config at runtime"""
         cfg = self.config.embeddings
-        model = f"{cfg.model_name}"
+        model = cfg.model_name
         api_base = (
             cfg.api_base
             or cfg.base_url
@@ -91,13 +92,13 @@ class AIService:
         )
         api_key = cfg.api_key or os.environ.get("GRAYBOX_EMBEDDING_API_KEY")
         input_type = cfg.input_type or None
-        azure_ad_token = cfg.azure_ad_token or os.environ.get("AZURE_AD_TOKEN")
         api_version = cfg.api_version
         deployment_id = cfg.deployment_id
         final_kwargs = cfg.kwargs.copy()
         final_kwargs.update(kwargs)
-        if azure_ad_token:
-            final_kwargs["azure_ad_token"] = azure_ad_token
+
+        final_kwargs.update(self._authentication.get_auth_kwargs(cfg))
+
         if api_version:
             final_kwargs["api_version"] = api_version
         if deployment_id:
@@ -113,7 +114,10 @@ class AIService:
 
     def _build_messages(self, system_prompt: str, prompt: str) -> list[dict]:
         return [
-            {"role": "system", "content": system_prompt or "You are a helpful assistant."},
+            {
+                "role": "system",
+                "content": system_prompt or "You are a helpful assistant.",
+            },
             {"role": "user", "content": prompt},
         ]
 
@@ -126,11 +130,20 @@ class AIService:
         if api_type == "chat_completion":
             content = response.choices[0].message.content
             logprobs = None
-            if hasattr(response.choices[0], "logprobs") and response.choices[0].logprobs:
-                logprobs = [token.logprob for token in response.choices[0].logprobs.content]
+            if (
+                hasattr(response.choices[0], "logprobs")
+                and response.choices[0].logprobs
+            ):
+                logprobs = [
+                    token.logprob for token in response.choices[0].logprobs.content
+                ]
             return {"response": content, "logprobs": logprobs, "cost": f"{cost:.6f}"}
         else:
-            return {"response": response.output_text, "logprobs": None, "cost": f"{cost:.6f}"}
+            return {
+                "response": response.output_text,
+                "logprobs": None,
+                "cost": f"{cost:.6f}",
+            }
 
     @retry(
         retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS),
@@ -146,20 +159,35 @@ class AIService:
         try:
             if params["api_type"] == "responses":
                 response = responses(
-                    model=params["model"], base_url=params["base_url"],
-                    api_base=params["api_base"], api_key=params["api_key"],
+                    model=params["model"],
+                    base_url=params["base_url"],
+                    api_base=params["api_base"],
+                    api_key=params["api_key"],
                     api_version=params.get("api_version"),
                     deployment_id=params.get("deployment_id"),
-                    seed=42, input=messages, stream=stream, **params["final_kwargs"],
+                    seed=42,
+                    input=messages,
+                    stream=stream,
+                    **params["final_kwargs"],
                 )
             else:
                 response = completion(
-                    model=params["model"], base_url=params["base_url"],
-                    api_base=params["api_base"], api_key=params["api_key"],
-                    seed=42, messages=messages, stream=stream, **params["final_kwargs"],
+                    model=params["model"],
+                    base_url=params["base_url"],
+                    api_base=params["api_base"],
+                    api_key=params["api_key"],
+                    seed=42,
+                    messages=messages,
+                    stream=stream,
+                    **params["final_kwargs"],
                 )
             if stream:
-                return {"response": response, "logprobs": None, "cost": 0.0, "streaming": True}
+                return {
+                    "response": response,
+                    "logprobs": None,
+                    "cost": 0.0,
+                    "streaming": True,
+                }
             return self._extract_response(response, params["api_type"])
 
         except RETRYABLE_EXCEPTIONS:
@@ -168,26 +196,43 @@ class AIService:
             logger.exception(f"Error calling LLM: {e}")
             return {"response": None, "logprobs": None, "cost": 0.0, "error": str(e)}
 
-    def llm_call_stream(self, system_prompt: str = None, prompt: str = None, **kwargs) -> dict:
+    def llm_call_stream(
+        self, system_prompt: str = None, prompt: str = None, **kwargs
+    ) -> dict:
         params = self.get_llm_params(**kwargs)
         messages = self._build_messages(system_prompt, prompt)
 
         try:
             if params["api_type"] == "responses":
                 stream = responses(
-                    model=params["model"], base_url=params["base_url"],
-                    api_base=params["api_base"], api_key=params["api_key"],
+                    model=params["model"],
+                    base_url=params["base_url"],
+                    api_base=params["api_base"],
+                    api_key=params["api_key"],
                     api_version=params.get("api_version"),
                     deployment_id=params.get("deployment_id"),
-                    seed=42, input=messages, stream=True, **params["final_kwargs"],
+                    seed=42,
+                    input=messages,
+                    stream=True,
+                    **params["final_kwargs"],
                 )
             else:
                 stream = completion(
-                    model=params["model"], base_url=params["base_url"],
-                    api_base=params["api_base"], api_key=params["api_key"],
-                    seed=42, messages=messages, stream=True, **params["final_kwargs"],
+                    model=params["model"],
+                    base_url=params["base_url"],
+                    api_base=params["api_base"],
+                    api_key=params["api_key"],
+                    seed=42,
+                    messages=messages,
+                    stream=True,
+                    **params["final_kwargs"],
                 )
-            return {"response": stream, "logprobs": None, "cost": 0.0, "streaming": True}
+            return {
+                "response": stream,
+                "logprobs": None,
+                "cost": 0.0,
+                "streaming": True,
+            }
 
         except RETRYABLE_EXCEPTIONS:
             raise
@@ -201,29 +246,46 @@ class AIService:
         wait=wait_exponential(multiplier=2, min=3, max=500),
         reraise=True,
     )
-    def llm_call_batch(self, system_prompt: str = None, prompts: list[str] = None, **kwargs) -> dict:
+    def llm_call_batch(
+        self, system_prompt: str = None, prompts: list[str] = None, **kwargs
+    ) -> dict:
         params = self.get_llm_params(**kwargs)
         if params["api_type"] != "chat_completion":
             raise ValueError("Batch calls only support chat_completion")
 
-        batched_messages = [self._build_messages(system_prompt, p) for p in (prompts or [])]
+        batched_messages = [
+            self._build_messages(system_prompt, p) for p in (prompts or [])
+        ]
         try:
             responses_list = batch_completion(
-                model=params["model"], base_url=params["base_url"],
-                api_base=params["api_base"], seed=42,
-                messages=batched_messages, **params["final_kwargs"],
+                model=params["model"],
+                base_url=params["base_url"],
+                api_base=params["api_base"],
+                seed=42,
+                messages=batched_messages,
+                **params["final_kwargs"],
             )
-            extracted = [self._extract_response(r, "chat_completion") for r in responses_list]
+            extracted = [
+                self._extract_response(r, "chat_completion") for r in responses_list
+            ]
             return {
                 "response": [e["response"] for e in extracted],
-                "logprobs": [e["logprobs"] for e in extracted] if any(e["logprobs"] for e in extracted) else None,
+                "logprobs": (
+                    [e["logprobs"] for e in extracted]
+                    if any(e["logprobs"] for e in extracted)
+                    else None
+                ),
                 "cost": sum(float(e["cost"]) for e in extracted),
             }
         except RETRYABLE_EXCEPTIONS:
             raise
         except Exception as e:
             logger.exception(f"Error calling LLM batch: {e}")
-            return {"response": [None] * len(prompts) if prompts else [], "logprobs": None, "cost": 0.0}
+            return {
+                "response": [None] * len(prompts) if prompts else [],
+                "logprobs": None,
+                "cost": 0.0,
+            }
 
     @retry(
         retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS),
@@ -231,22 +293,30 @@ class AIService:
         wait=wait_exponential(multiplier=2, min=3, max=500),
         reraise=True,
     )
-    async def llm_call_async(self, system_prompt: str = None, prompt: str = None, **kwargs) -> dict:
+    async def llm_call_async(
+        self, system_prompt: str = None, prompt: str = None, **kwargs
+    ) -> dict:
         params = self.get_llm_params(**kwargs)
         messages = self._build_messages(system_prompt, prompt)
 
         try:
             if params["api_type"] == "responses":
                 response = await aresponses(
-                    model=params["model"], base_url=params["base_url"],
-                    api_base=params["api_base"], seed=42,
-                    messages=messages, **params["final_kwargs"],
+                    model=params["model"],
+                    base_url=params["base_url"],
+                    api_base=params["api_base"],
+                    seed=42,
+                    messages=messages,
+                    **params["final_kwargs"],
                 )
             else:
                 response = await acompletion(
-                    model=params["model"], base_url=params["base_url"],
-                    api_base=params["api_base"], seed=42,
-                    messages=messages, **params["final_kwargs"],
+                    model=params["model"],
+                    base_url=params["base_url"],
+                    api_base=params["api_base"],
+                    seed=42,
+                    messages=messages,
+                    **params["final_kwargs"],
                 )
             return self._extract_response(response, params["api_type"])
         except RETRYABLE_EXCEPTIONS:
