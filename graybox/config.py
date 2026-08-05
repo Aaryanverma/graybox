@@ -90,6 +90,11 @@ class RetrievalConfig:
     min_score: float
     dedup_threshold: float = 0.85
     semantic_min_score: float = 0.15
+    graph_max_hops: int = 1
+    graph_max_nodes: int = 15
+    graph_max_neighbors_per_node: int = 5
+    graph_decay: float = 0.65
+    graph_min_score_ratio: float = 0.5
 
 
 @dataclass

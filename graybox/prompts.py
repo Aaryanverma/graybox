@@ -336,7 +336,23 @@ Requirements:
 - Preserve evidence useful for answering questions.
 - Remove repetition.
 - Do not invent information.
-- Return only the compressed context."""
+
+CRITICAL — source tag preservation:
+- The context is divided into blocks, each starting with a line of the
+  exact form: "Source Tag: [some/ref]"
+- You MUST keep every "Source Tag: [...]" line byte-for-byte unchanged,
+  in its original position, immediately before the summarized content it
+  labels.
+- Every fact you retain must stay under the same Source Tag it originally
+  appeared under. Never move a fact to a different tag, never merge two
+  tags' content under one tag, and never drop a Source Tag line while
+  keeping content from that block.
+- If a block's content is fully removed because it is pure repetition of
+  another block, you may drop the block entirely (tag and all) — do not
+  leave a Source Tag with no content, and do not leave content with no
+  Source Tag.
+
+Return only the compressed context."""
 
 HISTORY_COMPRESSION_PROMPT = """You are a highly efficient text summarizer. Summarize the following conversation history.
 

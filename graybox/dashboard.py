@@ -64,8 +64,11 @@ def _safe_date(value: str) -> date | None:
     try:
         return date.fromisoformat(value)
     except ValueError:
+        pass
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError:
         return None
-
 
 def _safe_dt(value: str) -> datetime | None:
     value = (value or "").strip()

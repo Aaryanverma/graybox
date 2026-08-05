@@ -88,6 +88,7 @@ def merge_pages(cfg: Config, primary_ref: str, secondary_ref: str, dry_run: bool
         date=primary.date or secondary.date,
         owner=primary.owner or secondary.owner,
         due=primary.due or secondary.due,
+        extra={**secondary.extra, **primary.extra},
     )
 
     report = {

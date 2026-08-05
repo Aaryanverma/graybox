@@ -69,11 +69,10 @@ def _source_tag(hit, all_workspaces: bool) -> str:
     if not all_workspaces:
         return search_id
 
-    workspace_id, workspace_name = _get_workspace_meta(hit)
-    workspace = workspace_name or workspace_id
+    workspace_id, _workspace_name = _get_workspace_meta(hit)
 
     # Safe fallback: do not invent provenance if we do not have it.
-    return f"{workspace}:{search_id}" if workspace else search_id
+    return f"{workspace_id}/{search_id}" if workspace_id else search_id
 
 
 def _build_history_block(
@@ -105,7 +104,8 @@ def _build_history_block(
             prompt=HISTORY_COMPRESSION_PROMPT,
         )
 
-    except:
+    except Exception as e:
+        logger.info(f"History compression failed\n{e};\nfalling back to truncated history")
         return "\n".join(lines[-MAX_HISTORY_TURNS * 2 :])
 
 def _render_note(note: str) -> str:
@@ -421,11 +421,11 @@ def _prepare_search_query(
     llm: AIService,
     question: str,
     history: list[ConversationTurn],
+    history_block: str,
 ) -> str:
     if not history:
         return question
 
-    history_block = _build_history_block(history, llm)
     prompt = QUERY_REPHRASE_PROMPT.format(history=history_block, question=question)
     text = llm.llm_call(system_prompt=QUERY_REPHRASE_SYSTEM_PROMPT_TMPL, prompt=prompt)
     if text["response"] is None:
@@ -444,12 +444,9 @@ def ask(
     history: list[ConversationTurn] | None = None,
 ) -> Answer:
     history = history or []
+    history_block = _build_history_block(history, llm)
 
-    search_query = _prepare_search_query(
-        llm,
-        question,
-        history,
-    )
+    search_query = _prepare_search_query(llm, question, history, history_block)
 
     wiki_hits, inbox_hits = search_all(
         cfg, search_query, top_k=cfg.retrieval.top_k, all_workspaces=all_workspaces
@@ -461,15 +458,22 @@ def ask(
             if emb_result and emb_result.get("embedding"):
                 if all_workspaces:
                     semantic_hits = _semantic_hits_all_workspaces(
-                        cfg,
-                        emb_result["embedding"],
-                        top_k=cfg.retrieval.top_k,
-                        min_score=cfg.retrieval.min_score,
+                        cfg, emb_result["embedding"],
+                        top_k=cfg.retrieval.top_k, min_score=cfg.retrieval.min_score,
                     )
                     if semantic_hits:
-                        # Merge semantic hits directly with keyword hits.
                         wiki_hits = wiki_hits + semantic_hits
                         wiki_hits.sort(key=lambda h: h.score, reverse=True)
+
+                        seen: set[tuple[str, str]] = set()
+                        deduped: list[Hit] = []
+                        for h in wiki_hits:
+                            key = (h.workspace_id, h.doc.search_id)
+                            if key in seen:
+                                continue
+                            seen.add(key)
+                            deduped.append(h)
+                        wiki_hits = deduped
                 else:
                     semantic_refs = search_embeddings(
                         cfg,
@@ -496,7 +500,7 @@ def ask(
                 cfg.retrieval, "graph_max_neighbors_per_node", 5
             ),
             decay=getattr(cfg.retrieval, "graph_decay", 0.65),
-            graph_min_score=getattr(cfg.retrieval, "graph_min_score", 0.35),
+            graph_min_score=getattr(cfg.retrieval, "graph_min_score_ratio", 0.5) * cfg.retrieval.min_score,
         )
 
         seen = set()

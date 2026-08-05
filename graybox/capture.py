@@ -12,10 +12,10 @@ from graybox.models import InboxItem
 from graybox.storage import write_inbox_item
 
 
-def capture(cfg: Config, text: str) -> InboxItem:
+def capture(cfg: Config, text: str, extra: dict | None = None) -> InboxItem:
     if not text or not text.strip():
         raise ValueError("Cannot capture empty content.")
-    return write_inbox_item(cfg, text)
+    return write_inbox_item(cfg, text, extra=extra or {})
 
 
 def capture_file(cfg: Config, file_path: str) -> InboxItem:

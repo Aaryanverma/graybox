@@ -154,7 +154,7 @@ def _gather_existing_context(cfg: Config, item_content: str, top_k: int = 10) ->
     return _format_existing_context(wiki_hits)
 
 def process_item(cfg: Config, llm: AIService, item_id: str, item_content: str,
-                  dry_run: bool = False) -> list[str]:
+                  dry_run: bool = False, item_extra: dict | None = None) -> list[str]:
     existing_context = _gather_existing_context(cfg, item_content)
     prompt = ORGANIZER_PROMPT_TMPL.format(note=item_content, existing_context=existing_context)
     raw = llm.llm_call(system_prompt=_system_prompt(cfg), prompt=prompt)
@@ -168,6 +168,8 @@ def process_item(cfg: Config, llm: AIService, item_id: str, item_content: str,
     def touch(page: Page, new: bool = False) -> Page:
         touched[page.ref] = page
         is_new.setdefault(page.ref, new)
+        if item_extra:
+            page.extra.update(item_extra)
         return page
 
     name_to_page: dict[str, Page] = {}
@@ -190,10 +192,7 @@ def process_item(cfg: Config, llm: AIService, item_id: str, item_content: str,
         )
 
         # Merge current-state fields that the Page model actually stores.
-        if ent.get("summary"):
-            page.summary = ent["summary"].strip()
-
-        if ent.get("status"):
+        if etype in ("project", "action") and ent.get("status"):
             page.status = ent["status"].strip()
 
         if etype == "meeting":
