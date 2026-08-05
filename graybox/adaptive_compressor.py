@@ -1,20 +1,21 @@
 from __future__ import annotations
 from graybox.ai import AIService
-from litellm.utils import get_max_tokens
+import litellm
+litellm.suppress_debug_info = True
 import logging
 
 logger = logging.getLogger(__name__)
 
+
 def estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
-_FALLBACK_MODEL_MAX_TOKENS = 32_000
+
+_FALLBACK_MODEL_CONTEXT_WINDOW = 32_000
+
 
 def compress_context(
-    context: str,
-    llm: AIService,
-    max_tokens: int = 8196,
-    prompt: str = None
+    context: str, llm: AIService, max_tokens: int = 8196, prompt: str = None
 ) -> str:
     """
     Compresses the context to fit within the max_tokens limit using the provided LLM service.
@@ -29,18 +30,21 @@ def compress_context(
         prompt = "Please compress the following text while preserving the most important information:\n\n"
 
     try:
-        model_max_tokens = get_max_tokens(llm.get_llm_params()["model"])
+        model_context_window = litellm.get_model_info(llm.get_llm_params()["model"]).get(
+            "max_input_tokens"
+        )
     except Exception as e:
         logger.info(
             "Could not determine max tokens for model (%s); using a conservative default of %d.",
-            e, _FALLBACK_MODEL_MAX_TOKENS,
+            e,
+            _FALLBACK_MODEL_CONTEXT_WINDOW,
         )
-        model_max_tokens = None
+        model_context_window = None
 
-    if not model_max_tokens:
-        model_max_tokens = _FALLBACK_MODEL_MAX_TOKENS
+    if not model_context_window:
+        model_context_window = _FALLBACK_MODEL_CONTEXT_WINDOW
 
-    available_context = model_max_tokens - max_tokens - 1000  # safety buffer
+    available_context = model_context_window - max_tokens - 1000  # safety buffer
     if estimate_tokens(context) <= available_context:
         return context
 
@@ -49,7 +53,7 @@ def compress_context(
     try:
         result = llm.llm_call(prompt=prompt + context)
     except Exception as e:
-        logger.warning("Compression LLM call failed (%s); returning original context.", e)
+        logger.info("Compression LLM call failed (%s); returning original context.", e)
         return context
 
     if result and result.get("response"):
