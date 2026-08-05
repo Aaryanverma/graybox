@@ -79,6 +79,8 @@ class LLMConfig:
     api_type: str = "chat_completion"
     max_tokens: int = 1024
     max_completion_tokens: int = 1024
+    top_p: float = 0.95
+    top_k: int = 40
     kwargs: dict = field(default_factory=dict)
 
 
@@ -88,6 +90,11 @@ class RetrievalConfig:
     min_score: float
     dedup_threshold: float = 0.85
     semantic_min_score: float = 0.15
+    graph_max_hops: int = 1
+    graph_max_nodes: int = 15
+    graph_max_neighbors_per_node: int = 5
+    graph_decay: float = 0.65
+    graph_min_score_ratio: float = 0.5
 
 
 @dataclass
@@ -204,11 +211,12 @@ def _candidate_config_paths(path: str | None = None) -> list[Path]:
         candidates.append(Path(env_path))
     local_default = Path("config.yaml")
     cwd_default = Path.cwd() / ".graybox" / "config.yaml"
-    home_default = Path.home() / ".graybox" / "config.yaml"
     if local_default not in candidates:
         candidates.append(local_default)
     if cwd_default not in candidates:
         candidates.append(cwd_default)
+
+    home_default = Path.home() / ".graybox" / "config.yaml"
     if home_default not in candidates:
         candidates.append(home_default)
     return candidates

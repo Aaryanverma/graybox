@@ -225,23 +225,39 @@ Every command accepts `--config <path>` to use a config file other than `./confi
 
 ## Configuration
 
-`config.yaml` at the project root controls everything. Environment variables always win over the file, and the file always wins over built-in defaults.
+`config.yaml` at the project root controls everything. 
+
+Graybox searches for configuration in this order:
+
+1. Explicit config path
+2. `GRAYBOX_CONFIG`
+3. `config.yaml`
+4. `.graybox/config.yaml`
+
+<small>
+Note: For reproducible project behavior, `~/.graybox/config.yaml` is **not** loaded by default. To enable it as a fallback, set:
+
+```bash
+export GRAYBOX_USE_GLOBAL_CONFIG=1
+```
+</small>
+
+Sample Config File
 
 ```yaml
 root: ".graybox"          # app root inside the current terminal directory
 default_workspace: "personal"  # workspace created/used the very first time you run any command
-active_workspace: "personal"   # which workspace is currently active — kept in sync by `workspace-switch`
 env_file: "creds.env"          # optional .env file for API keys
 
 llm:
   model_name: "openai/gpt-5.6"   # any LiteLLM-supported model string
   temperature: 0
   base_url: ""
-  max_tokens: 1024
+  max_tokens: 4096
 
 retrieval:
   top_k: 5              # how many wiki pages to pull into context per question
-  min_score: 0.4        # relevance threshold — same 0–1 scale for keyword AND semantic search
+  min_score: 0.7        # relevance threshold — same 0–1 scale for keyword AND semantic search
   dedup_threshold: 0.85 # similarity threshold for organize/dupes/merge (0-1, closer to 1 = more similar)
 
 embeddings:
@@ -426,7 +442,7 @@ Longevity and inspectability. A `.md` file with YAML frontmatter opens in litera
 
 ## Roadmap
 
-- [ ] Dashboard Improvements
+- [ ] Dashboard Improvements (WIP)
 - [ ] Decision Intelligence & Memory Timeline
 - [ ] Meeting summarization
 - [ ] Automatic daily journal digest

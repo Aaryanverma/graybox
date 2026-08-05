@@ -1,4 +1,3 @@
-
 """
 Storage layer. Everything is plain files on disk.
 
@@ -60,10 +59,13 @@ def ensure_workspace(cfg: Config) -> None:
 # Inbox (append-only, immutable)
 # ---------------------------------------------------------------------------
 
-def write_inbox_item(cfg: Config, content: str) -> InboxItem:
+def write_inbox_item(cfg: Config, content: str, extra: dict | None = None) -> InboxItem:
     ensure_workspace(cfg)
     inbox_dir = cfg.inbox_dir
     item_id = f"{now_id_ts()}-{secrets.token_hex(2)}"
+    fm = {"id": item_id, "created": now_iso()}
+    if extra:
+        fm["extra"] = extra
     body = (
         "---\n"
         + yaml.safe_dump({"id": item_id, "created": now_iso()}, sort_keys=False)
@@ -243,6 +245,7 @@ def _parse_page(path: Path) -> Page:
         date=fm.get("date", "") or "",
         owner=fm.get("owner", "") or "",
         due=fm.get("due", "") or "",
+        extra=fm.get("extra", {}) or {},
         summary_refreshed_at=fm.get("summary_refreshed_at", "") or "",
         path=str(path),
     )
