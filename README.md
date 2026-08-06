@@ -110,6 +110,9 @@ pip install graybox
 
 # for tests
 pip install graybox[test]
+
+# for azure auth
+pip install graybox[azure]
 ```
 
 ```bash
@@ -120,6 +123,8 @@ pip install -e .
 
 Then point it at an LLM. Set your API key however your provider expects it — e.g. in an `.env` file (referenced by `env_file:` in `config.yaml`) or as an environment variable such as `GRAYBOX_LLM_API_KEY`. The app root defaults to `.graybox` inside the current terminal directory, not your home folder.
 
+> [!TIP]
+> In an enterprise environment, if you face error installing the package because of firewalls, try installing older version of litellm (with no rust dependency) first, and then install graybox.
 ---
 
 ## Quick start
