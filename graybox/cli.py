@@ -242,7 +242,11 @@ def _getch() -> Key | str:
             return Key.ESC
         if ch in (b"\b",):
             return Key.BACKSPACE
-        return ch.decode("utf-8", "ignore")
+        data = bytearray(ch)
+        expected = _utf8_sequence_len(ch[0])
+        while len(data) < expected and msvcrt.kbhit():
+            data += msvcrt.getch()
+        return _decode_key(bytes(data))
     except ImportError:
         pass
 
