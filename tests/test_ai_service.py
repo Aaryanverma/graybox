@@ -1,6 +1,7 @@
 """Tests for graybox.ai.ai_service.AIService — mocks litellm entirely."""
 from __future__ import annotations
 
+import socket
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
@@ -29,6 +30,65 @@ def _fake_chat_response(text: str):
     message = SimpleNamespace(content=text)
     choice = SimpleNamespace(message=message, logprobs=None)
     return SimpleNamespace(choices=[choice])
+
+
+class TestIPv4PreferredResolution:
+    """Regression: on networks without routable IPv6, httpx/litellm hung
+    forever resolving the IPv6 address that getaddrinfo lists first. We
+    reorder results so IPv4 is tried first."""
+
+    def test_reorders_ipv6_first_results_to_ipv4_first(self):
+        from graybox.ai.ai_service import _ipv4_first_order
+
+        ipv6 = (socket.AF_INET6, socket.SOCK_STREAM, 0, "", ("2600:1900::", 443))
+        ipv4 = (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("172.217.113.4", 443))
+        ordered = _ipv4_first_order([ipv6, ipv4])
+        assert ordered[0][0] == socket.AF_INET
+        assert ordered[1][0] == socket.AF_INET6
+
+    def test_ipv4_only_host_is_untouched(self):
+        from graybox.ai.ai_service import _ipv4_first_order
+
+        ipv4 = (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 443))
+        assert _ipv4_first_order([ipv4]) == [ipv4]
+
+    def test_socket_getaddrinfo_is_patched(self):
+        import graybox.ai.ai_service as ai_service
+
+        assert socket.getaddrinfo.__name__ == "_prefer_ipv4_getaddrinfo"
+
+    def test_patch_applied_before_litellm_import(self):
+        """Regression: litellm's own import does a blocking network fetch.
+        If the getaddrinfo patch runs after `from litellm import ...`, that
+        fetch hangs on broken IPv6 for ~20s on every graybox startup."""
+        import inspect
+
+        import graybox.ai.ai_service as ai_service
+
+        src = inspect.getsource(ai_service)
+        patch = "socket.getaddrinfo = _prefer_ipv4_getaddrinfo"
+        litellm_import = "from litellm import ("
+        assert patch in src and litellm_import in src
+        assert src.index(patch) < src.index(litellm_import)
+
+
+class TestLocalModelCostMap:
+    """Regression: litellm's import fetches its model-cost map over the
+    network, which hangs ~20s on broken-IPv6 networks. Setting
+    LITELLM_LOCAL_MODEL_COST_MAP before the import skips the fetch entirely
+    and uses litellm's bundled local map — fast for everyone."""
+
+    def test_env_var_set_before_litellm_import(self):
+        import inspect
+
+        import graybox.ai.ai_service as ai_service
+
+        src = inspect.getsource(ai_service)
+        setdefault = 'os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "true")'
+        litellm_import = "from litellm import ("
+        assert setdefault in src and litellm_import in src
+        assert src.index(setdefault) < src.index(litellm_import)
+
 
 
 class TestGetLlmParams:
