@@ -1,16 +1,51 @@
 """Tests for storage.py — markdown round-trip, frontmatter, note splitting, rewiring."""
 from __future__ import annotations
 
+import pytest
+
+from graybox.capture import capture
 from graybox.models import Page, now_iso
 from graybox.storage import (
+    append_inbox_item,
     write_page,
     read_page,
+    read_inbox_item,
     list_pages,
     rewire_references,
     page_path,
     _split_notes,
     _replace_wiki_link,
 )
+
+
+class TestAppendInboxItem:
+    def test_append_adds_text_after_original(self, temp_cfg):
+        item = capture(temp_cfg, "first thought")
+        updated = append_inbox_item(temp_cfg, item.id, "second thought")
+        assert updated.id == item.id
+        loaded = read_inbox_item(temp_cfg, item.id)
+        assert loaded is not None
+        assert "first thought" in loaded.content
+        assert "second thought" in loaded.content
+        assert loaded.content.index("first thought") < loaded.content.index("second thought")
+
+    def test_append_preserves_frontmatter(self, temp_cfg):
+        item = capture(temp_cfg, "hello")
+        append_inbox_item(temp_cfg, item.id, "world")
+        raw = (temp_cfg.inbox_dir / f"{item.id}.md").read_text(encoding="utf-8")
+        assert raw.startswith("---\n")
+        loaded = read_inbox_item(temp_cfg, item.id)
+        assert loaded is not None
+        assert loaded.id == item.id
+
+    def test_append_rejects_empty_text(self, temp_cfg):
+        item = capture(temp_cfg, "hello")
+        with pytest.raises(ValueError, match="Cannot append empty content"):
+            append_inbox_item(temp_cfg, item.id, "   \n\t  ")
+
+    def test_append_missing_item_raises(self, temp_cfg):
+        with pytest.raises(ValueError, match="Inbox item not found"):
+            append_inbox_item(temp_cfg, "doesnotexist", "text")
 
 
 class TestPageRoundTrip:

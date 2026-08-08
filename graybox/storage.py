@@ -78,6 +78,35 @@ def write_inbox_item(cfg: Config, content: str, extra: dict | None = None) -> In
     invalidate_inbox(cfg, item_id)
     return InboxItem(id=item_id, created=now_iso(), content=content.strip(), path=str(path))
 
+
+def append_inbox_item(cfg: Config, item_id: str, text: str) -> InboxItem:
+    """Append user-supplied text to an existing inbox item, preserving its
+    frontmatter verbatim. The original text is left untouched; the addition
+    is appended to the body as a new paragraph."""
+    ensure_workspace(cfg)
+    if not text or not text.strip():
+        raise ValueError("Cannot append empty content.")
+    path = cfg.inbox_dir / f"{item_id}.md"
+    if not path.exists():
+        raise ValueError(f"Inbox item not found: {item_id}")
+    raw = path.read_text(encoding="utf-8")
+    m = FRONTMATTER_RE.match(raw)
+    if m:
+        head, body = m.group(1), m.group(2)
+        fm = yaml.safe_load(head) or {}
+        new_raw = f"---\n{head}\n---\n\n" + body.rstrip("\n") + "\n\n" + text.strip() + "\n"
+    else:
+        fm, body = {}, raw
+        new_raw = raw.rstrip("\n") + "\n\n" + text.strip() + "\n"
+    path.write_text(new_raw, encoding="utf-8")
+    invalidate_inbox(cfg, item_id)
+    return InboxItem(
+        id=item_id,
+        created=fm.get("created", now_iso()),
+        content=body.strip() + "\n\n" + text.strip(),
+        path=str(path),
+    )
+
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
     m = FRONTMATTER_RE.match(text)
     if not m:
