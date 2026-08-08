@@ -356,7 +356,7 @@ def _append_note_interactive(cfg, item_id: str) -> InboxItem | None:
         return None
     item = append_inbox_item(cfg, item_id, text.strip())
     print(
-        f"{ColorCodes.GREEN}✓ Appended{ColorCodes.RESET} {ColorCodes.DIM}→{ColorCodes.RESET} "
+        f"{ColorCodes.GREEN}✓ Follow-up captured{ColorCodes.RESET} {ColorCodes.DIM}→{ColorCodes.RESET} "
         f"{ColorCodes.CYAN}inbox/{item.id}.md{ColorCodes.RESET}"
     )
     return item
