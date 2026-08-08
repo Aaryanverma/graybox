@@ -205,6 +205,30 @@ class TestInteractiveCaptureFlow:
         assert loaded.content.index("first thought") < loaded.content.index("second thought")
 
 
+class TestTuiHomeOptions:
+    """The Textual home menu exposes "append to last note" after a capture."""
+
+    def test_capture_preselected_without_last_item(self):
+        from graybox.tui_home import _home_options
+
+        options = _home_options(None)
+        cmds = [c for c, _ in options]
+        assert "capture" in cmds
+        assert "append" not in cmds
+
+    def test_append_on_top_with_last_item(self):
+        from graybox.tui_home import _home_options
+
+        options = _home_options("some-item-id")
+        assert options[0][0] == "append"
+
+    def test_no_append_without_last_item(self):
+        from graybox.tui_home import _home_options
+
+        cmds = [c for c, _ in _home_options(None)]
+        assert "append" not in cmds
+
+
 class TestUtf8SequenceLen:
     def test_ascii_single_byte(self):
         assert _utf8_sequence_len(ord("a")) == 1
