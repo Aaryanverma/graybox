@@ -4,4 +4,4 @@ litellm==1.93.0
 tenacity==9.1.2
 python-dotenv==1.2.2
 readchar==4.2.2
-pyfiglet==1.0.3
+textual==8.2.8
