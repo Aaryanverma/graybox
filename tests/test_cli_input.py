@@ -195,9 +195,16 @@ class TestInteractiveCaptureFlow:
 
         assert not input_thread.is_alive(), "interactive append hung"
         assert "error" not in holder, holder.get("error")
-        loaded = read_inbox_item(temp_cfg, item.id)
-        assert loaded is not None
-        assert loaded.content.index("first thought") < loaded.content.index("second thought")
+        result = holder["item"]
+        assert result is not None
+        assert result.id != item.id
+        original = read_inbox_item(temp_cfg, item.id)
+        assert original is not None
+        assert original.content == "first thought"
+        assert "second thought" not in original.content
+        follow_up = read_inbox_item(temp_cfg, result.id)
+        assert follow_up is not None
+        assert follow_up.content == "second thought"
 
 
 class TestTuiHomeOptions:

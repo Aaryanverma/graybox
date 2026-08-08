@@ -642,3 +642,53 @@ class TestAutoRefreshSummaries:
         report = organize_all(temp_cfg, mock_llm, dry_run=True)
         assert report["summaries_refreshed"] == []
         mock_llm.llm_call.assert_called_once()
+
+
+class TestAppendFollowUpReachesKnowledgeLayer:
+    """Regression: a follow-up appended to an already-organized item must
+    reach the wiki. append_inbox_item writes a brand-new inbox item linked
+    to the original, so the next organize run picks it up — instead of
+    silently dropping it because the original item id is already marked
+    processed."""
+
+    def test_append_after_organize_is_picked_up_by_next_organize(self, temp_cfg):
+        from graybox.capture import capture
+        from graybox.storage import append_inbox_item, read_page
+
+        def llm_extract(entities):
+            return {
+                "response": json.dumps({
+                    "entities": entities,
+                    "relations": [],
+                    "tasks": [],
+                    "actions": [],
+                    "decisions": [],
+                    "meetings": [],
+                })
+            }
+
+        mock_llm = MagicMock()
+        original = capture(temp_cfg, "Alice started the Atlas migration.")
+
+        mock_llm.llm_call.return_value = llm_extract([
+            {"type": "person", "name": "Alice", "aliases": [], "summary": "Engineer"}
+        ])
+        report1 = organize_all(temp_cfg, mock_llm, dry_run=False)
+        assert len(report1["processed"]) == 1
+
+        page = read_page(temp_cfg, "person", "alice")
+        assert page is not None
+        assert len(page.notes) == 1
+
+        follow_up = append_inbox_item(temp_cfg, original.id, "Alice shipped the migration.")
+
+        mock_llm.llm_call.return_value = llm_extract([
+            {"type": "person", "name": "Alice", "aliases": [], "summary": "Engineer"}
+        ])
+        report2 = organize_all(temp_cfg, mock_llm, dry_run=False)
+        assert any(i["item"] == follow_up.id for i in report2["processed"]), report2
+
+        page = read_page(temp_cfg, "person", "alice")
+        assert page is not None
+        assert len(page.notes) == 2
+        assert any("shipped" in n for n in page.notes)

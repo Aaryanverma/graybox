@@ -68,7 +68,7 @@ def write_inbox_item(cfg: Config, content: str, extra: dict | None = None) -> In
         fm["extra"] = extra
     body = (
         "---\n"
-        + yaml.safe_dump({"id": item_id, "created": now_iso()}, sort_keys=False)
+        + yaml.safe_dump(fm, sort_keys=False)
         + "---\n\n"
         + content.strip()
         + "\n"
@@ -80,32 +80,21 @@ def write_inbox_item(cfg: Config, content: str, extra: dict | None = None) -> In
 
 
 def append_inbox_item(cfg: Config, item_id: str, text: str) -> InboxItem:
-    """Append user-supplied text to an existing inbox item, preserving its
-    frontmatter verbatim. The original text is left untouched; the addition
-    is appended to the body as a new paragraph."""
+    """Record a follow-up to an existing inbox item as a brand-new item.
+
+    The inbox is append-only/immutable: mutating the original file would
+    keep the same id, and that id is already marked processed, so a
+    follow-up would silently never reach the knowledge layer. Instead a new
+    item is written, linked back to the original via `extra.previous_id`,
+    which the next `organize` run picks up normally.
+    """
     ensure_workspace(cfg)
     if not text or not text.strip():
         raise ValueError("Cannot append empty content.")
     path = cfg.inbox_dir / f"{item_id}.md"
     if not path.exists():
         raise ValueError(f"Inbox item not found: {item_id}")
-    raw = path.read_text(encoding="utf-8")
-    m = FRONTMATTER_RE.match(raw)
-    if m:
-        head, body = m.group(1), m.group(2)
-        fm = yaml.safe_load(head) or {}
-        new_raw = f"---\n{head}\n---\n\n" + body.rstrip("\n") + "\n\n" + text.strip() + "\n"
-    else:
-        fm, body = {}, raw
-        new_raw = raw.rstrip("\n") + "\n\n" + text.strip() + "\n"
-    path.write_text(new_raw, encoding="utf-8")
-    invalidate_inbox(cfg, item_id)
-    return InboxItem(
-        id=item_id,
-        created=fm.get("created", now_iso()),
-        content=body.strip() + "\n\n" + text.strip(),
-        path=str(path),
-    )
+    return write_inbox_item(cfg, text, extra={"previous_id": item_id})
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
     m = FRONTMATTER_RE.match(text)

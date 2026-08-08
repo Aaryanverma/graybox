@@ -15,28 +15,41 @@ from graybox.storage import (
     page_path,
     _split_notes,
     _replace_wiki_link,
+    _parse_frontmatter,
 )
 
 
 class TestAppendInboxItem:
-    def test_append_adds_text_after_original(self, temp_cfg):
+    def test_append_creates_new_item_linked_to_original(self, temp_cfg):
         item = capture(temp_cfg, "first thought")
-        updated = append_inbox_item(temp_cfg, item.id, "second thought")
-        assert updated.id == item.id
-        loaded = read_inbox_item(temp_cfg, item.id)
-        assert loaded is not None
-        assert "first thought" in loaded.content
-        assert "second thought" in loaded.content
-        assert loaded.content.index("first thought") < loaded.content.index("second thought")
+        follow_up = append_inbox_item(temp_cfg, item.id, "second thought")
 
-    def test_append_preserves_frontmatter(self, temp_cfg):
+        assert follow_up.id != item.id
+
+        original = read_inbox_item(temp_cfg, item.id)
+        assert original is not None
+        assert original.content == "first thought"
+        assert "second thought" not in original.content
+
+        loaded = read_inbox_item(temp_cfg, follow_up.id)
+        assert loaded is not None
+        assert loaded.content == "second thought"
+
+    def test_append_stores_previous_id_link_in_frontmatter(self, temp_cfg):
+        item = capture(temp_cfg, "hello")
+        follow_up = append_inbox_item(temp_cfg, item.id, "world")
+        fm, _ = _parse_frontmatter(
+            (temp_cfg.inbox_dir / f"{follow_up.id}.md").read_text(encoding="utf-8")
+        )
+        assert fm.get("extra", {}).get("previous_id") == item.id
+
+    def test_append_leaves_original_file_untouched(self, temp_cfg):
         item = capture(temp_cfg, "hello")
         append_inbox_item(temp_cfg, item.id, "world")
-        raw = (temp_cfg.inbox_dir / f"{item.id}.md").read_text(encoding="utf-8")
-        assert raw.startswith("---\n")
-        loaded = read_inbox_item(temp_cfg, item.id)
-        assert loaded is not None
-        assert loaded.id == item.id
+        original = read_inbox_item(temp_cfg, item.id)
+        assert original is not None
+        assert original.content == "hello"
+        assert len(list(temp_cfg.inbox_dir.glob("*.md"))) == 2
 
     def test_append_rejects_empty_text(self, temp_cfg):
         item = capture(temp_cfg, "hello")
