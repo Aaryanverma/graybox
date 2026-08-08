@@ -444,7 +444,9 @@ class GrayBoxApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.query_one(OptionList).focus()
+        option_list = self.query_one(OptionList)
+        option_list.focus()
+        option_list.highlighted = _default_home_selection(self.menu_options)
 
     def action_open_link(self, url: str) -> None:
         try:
@@ -497,13 +499,10 @@ class GrayBoxApp(App):
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def interactive_main(
-    config_path: str | None = None,
-    *,
-    run_command: Callable[[str, str | None], None],
-) -> None:
-    _resize_terminal(110, 35)
-
+def _home_options(last_item_id: str | None = None) -> list[tuple[str, str]]:
+    """Menu entries for the Textual home. When a note was just captured, an
+    "append to last note" option is inserted at the top so a follow-up is one
+    keystroke away."""
     options: list[tuple[str, str]] = [
         ("status", "Workspace summary"),
         ("capture", "Capture a note or import"),
@@ -518,8 +517,44 @@ def interactive_main(
         ("create-workspace", "Create workspace"),
         ("exit", "Quit"),
     ]
+    if last_item_id:
+        options.insert(0, ("append", "Append to last note"))
+    return options
+
+
+def _default_home_selection(options: Sequence[tuple[str, str]]) -> int:
+    """Index of the option highlighted on open: "append" right after a
+    capture, otherwise "capture" so the app drops you straight into noting."""
+    for i, (cmd, _) in enumerate(options):
+        if cmd == "append":
+            return i
+    for i, (cmd, _) in enumerate(options):
+        if cmd == "capture":
+            return i
+    return 0
+
+
+def _next_last_item_id(cmd_name: str, result: str | None) -> str | None:
+    """State transition for the "append" affordance: after a capture the new
+    item id becomes the target for a follow-up; using "append" consumes it so
+    the option disappears until the next capture."""
+    if not result:
+        return None
+    return result if cmd_name != "append" else None
+
+
+def interactive_main(
+    config_path: str | None = None,
+    *,
+    run_command: Callable[[str, str | None, str | None], str | None],
+) -> None:
+    _resize_terminal(110, 35)
+
+    last_item_id: str | None = None
 
     while True:
+        options = _home_options(last_item_id)
+
         try:
             cfg = load_config(config_path)
             snapshot = build_home_snapshot(cfg)
@@ -564,7 +599,9 @@ def interactive_main(
                 subprocess.run(['cls'], shell=True)
         
         try:
-            run_command(selected_cmd, config_path)
+            result = run_command(selected_cmd, config_path, last_item_id)
+            if result:
+                last_item_id = _next_last_item_id(selected_cmd, result)
         except (EOFError, KeyboardInterrupt):
             print("\nCancelled.")
         except Exception as e:

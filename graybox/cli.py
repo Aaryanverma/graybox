@@ -5,23 +5,14 @@ import os
 import sys
 from enum import Enum
 
-from graybox.ai import AIService
 from graybox.capture import capture, capture_file
 from graybox.config import load_config
-from graybox.curate import (
-    delete_page,
-    edit_page,
-    find_possible_duplicates,
-    merge_pages,
-)
 from graybox.dashboard import write_dashboard
-from graybox.summarizer import refresh_all_summaries
 from graybox.embedding_index import ensure_indexed
 from graybox.forget import forget_item
-from graybox.organizer import organize_all
-from graybox.retrieval import ask, ConversationTurn
 from graybox.search import search_all
 from graybox.storage import (
+    append_inbox_item,
     ensure_workspace,
     list_inbox_items,
     list_pages,
@@ -342,6 +333,49 @@ def _interactive_input(prompt: str) -> str | None:
             sys.stdout.flush()
 
 
+def _capture_note_interactive(cfg) -> InboxItem | None:
+    """Straight to the note prompt — no "Press F to import" wait."""
+    text = _interactive_input(
+        f"{ColorCodes.BOLD}Note text {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
+    )
+    if text is None or not text.strip():
+        return None
+    item = capture(cfg, text.strip())
+    print(
+        f"{ColorCodes.GREEN}✓ Captured{ColorCodes.RESET} {ColorCodes.DIM}→{ColorCodes.RESET} "
+        f"{ColorCodes.CYAN}inbox/{item.id}.md{ColorCodes.RESET}"
+    )
+    return item
+
+
+def _append_note_interactive(cfg, item_id: str) -> InboxItem | None:
+    text = _interactive_input(
+        f"{ColorCodes.BOLD}Add to last note {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
+    )
+    if text is None or not text.strip():
+        return None
+    item = append_inbox_item(cfg, item_id, text.strip())
+    print(
+        f"{ColorCodes.GREEN}✓ Follow-up captured{ColorCodes.RESET} {ColorCodes.DIM}→{ColorCodes.RESET} "
+        f"{ColorCodes.CYAN}inbox/{item.id}.md{ColorCodes.RESET}"
+    )
+    return item
+
+
+def _import_file_interactive(cfg) -> InboxItem | None:
+    path = _interactive_input(
+        f"{ColorCodes.BOLD}File path {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
+    )
+    if path is None or not path.strip():
+        return None
+    item = capture_file(cfg, path.strip())
+    print(
+        f"{ColorCodes.GREEN}✓ Imported{ColorCodes.RESET} {ColorCodes.DIM}→{ColorCodes.RESET} "
+        f"{ColorCodes.CYAN}inbox/{item.id}.md{ColorCodes.RESET}"
+    )
+    return item
+
+
 def _pick_workspace(cfg, prompt: str = "Select workspace") -> Workspace | None:
     workspaces = cfg.workspace_manager.list()
     if not workspaces:
@@ -384,6 +418,7 @@ def _pick_workspace(cfg, prompt: str = "Select workspace") -> Workspace | None:
         elif ch in (Key.ESC, "q"):
             return None
 
+
 def cmd_capture(args):
     cfg = load_config(args.config)
     ensure_workspace(cfg)
@@ -397,6 +432,8 @@ def cmd_capture(args):
     )
 
 def cmd_organize(args):
+    from graybox.ai import AIService
+
     cfg = load_config(args.config)
     ensure_workspace(cfg)
     llm = AIService(cfg)
@@ -405,6 +442,8 @@ def cmd_organize(args):
             f"{ColorCodes.YELLOW}⚠️  [Dry-Run] No files will be written to disk; items stay unprocessed.{ColorCodes.RESET}\n"
         )
     with Spinner("Organizing inbox"):
+        from graybox.organizer import organize_all
+
         report = organize_all(cfg, llm, dry_run=args.dry_run)
     for entry in report["processed"]:
         pages = ", ".join(entry["pages"]) or "(no entities extracted)"
@@ -423,10 +462,14 @@ def cmd_organize(args):
     )
 
 def cmd_ask(args):
+    from graybox.ai import AIService
+
     cfg = load_config(args.config)
     ensure_workspace(cfg)
     llm = AIService(cfg)
     with Spinner("Thinking"):
+        from graybox.retrieval import ask
+
         answer = ask(cfg, llm, args.question, all_workspaces=args.all)
     print(f"\n{ColorCodes.GOLD_BRIGHT}✨{ColorCodes.RESET} {ColorCodes.TEXT_BRIGHT}{answer.text}{ColorCodes.RESET}\n")
     if answer.sources:
@@ -440,8 +483,12 @@ def cmd_ask(args):
         )
 
 def cmd_chat(args):
+    from graybox.ai import AIService
+
     cfg = load_config(args.config)
     ensure_workspace(cfg)
+    from graybox.retrieval import ask, ConversationTurn
+
     llm = AIService(cfg)
     history: list[ConversationTurn] = []
 
@@ -610,6 +657,8 @@ def cmd_dupes(args):
     threshold = (
         args.threshold if args.threshold is not None else cfg.retrieval.dedup_threshold
     )
+    from graybox.curate import find_possible_duplicates
+
     candidates = find_possible_duplicates(cfg, page_type=args.type, threshold=threshold)
     if not candidates:
         print(
@@ -637,6 +686,8 @@ def cmd_merge(args):
     cfg = load_config(args.config)
     ensure_workspace(cfg)
     try:
+        from graybox.curate import merge_pages
+
         report = merge_pages(
             cfg, args.primary_ref, args.secondary_ref, dry_run=args.dry_run
         )
@@ -660,6 +711,8 @@ def cmd_edit(args):
     cfg = load_config(args.config)
     ensure_workspace(cfg)
     try:
+        from graybox.curate import edit_page
+
         report = edit_page(
             cfg,
             args.ref,
@@ -689,6 +742,8 @@ def cmd_delete(args):
     cfg = load_config(args.config)
     ensure_workspace(cfg)
     try:
+        from graybox.curate import delete_page
+
         report = delete_page(cfg, args.ref, dry_run=args.dry_run)
     except ValueError as e:
         print(f"{ColorCodes.RED}✗ {e}{ColorCodes.RESET}", file=sys.stderr)
@@ -713,6 +768,8 @@ def cmd_rebuild_index(args):
             f"{ColorCodes.DIM}Set embeddings.enabled: true to use semantic search.{ColorCodes.RESET}"
         )
         return
+    from graybox.ai import AIService
+
     llm = AIService(cfg)
     pages = list_pages(cfg, args.type)
     indexed = 0
@@ -734,6 +791,8 @@ def cmd_rebuild_index(args):
     )
 
 def cmd_refresh(args):
+    from graybox.ai import AIService
+
     cfg = load_config(args.config)
     ensure_workspace(cfg)
     llm = AIService(cfg)
@@ -742,6 +801,8 @@ def cmd_refresh(args):
             f"{ColorCodes.YELLOW}⚠️  [Dry-Run] No files will be written.{ColorCodes.RESET}\n"
         )
     with Spinner("Refreshing summaries"):
+        from graybox.summarizer import refresh_all_summaries
+
         report = refresh_all_summaries(
             cfg, llm, page_type=args.type, dry_run=args.dry_run, min_notes=args.min_notes
         )
@@ -848,7 +909,9 @@ def cmd_workspace_create(args):
     )
 
 
-def _run_cli_command(cmd_name: str, config_path: str | None):
+def _run_cli_command(
+    cmd_name: str, config_path: str | None, last_item_id: str | None = None
+) -> str | None:
     args = MockArgs(
         config=config_path,
         dry_run=False,
@@ -880,28 +943,19 @@ def _run_cli_command(cmd_name: str, config_path: str | None):
     if cmd_name == "status":
         cmd_status(args)
     elif cmd_name == "capture":
-        print(
-            f"{ColorCodes.DIM}Press {ColorCodes.RESET}{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}F{ColorCodes.RESET}"
-            f"{ColorCodes.DIM} to import a file, or any other key to type a note directly "
-            f"(Esc to cancel){ColorCodes.RESET}"
-        )
-        choice = _getch()
-        if choice == Key.ESC:
-            return
-        if isinstance(choice, str) and choice.lower() == "f":
-            path = _interactive_input(
-                f"{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}File path {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
-            )
-            if path is not None and path.strip():
-                args.file = path.strip()
-                cmd_capture(args)
-        else:
-            text = _interactive_input(
-                f"{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}Note text {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
-            )
-            if text is not None and text.strip():
-                args.text = text.strip()
-                cmd_capture(args)
+        cfg = load_config(config_path)
+        item = _capture_note_interactive(cfg)
+        return item.id if item else None
+    elif cmd_name == "append":
+        cfg = load_config(config_path)
+        if not last_item_id:
+            return None
+        item = _append_note_interactive(cfg, last_item_id)
+        return item.id if item else None
+    elif cmd_name == "import":
+        cfg = load_config(config_path)
+        item = _import_file_interactive(cfg)
+        return item.id if item else None
     elif cmd_name == "organize":
         cmd_organize(args)
     elif cmd_name == "ask":
