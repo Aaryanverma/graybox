@@ -5,7 +5,6 @@ import os
 import sys
 from enum import Enum
 
-from pyfiglet import Figlet
 from graybox.ai import AIService
 from graybox.capture import capture, capture_file
 from graybox.config import load_config
@@ -175,11 +174,6 @@ def hyperlink(text: str, url: str) -> str:
     return f"{OSC}8;;{url}{BEL}{text}{OSC}8;;{BEL}"
 
 
-def _pause(msg: str = "Press any key to return to menu...") -> None:
-    print(f"\n{ColorCodes.DIM}{msg}{ColorCodes.RESET}")
-    _getch()
-
-
 def _normalize_readchar_key(k: str) -> Key | str:
     if readchar is not None:
         if k == getattr(readchar.key, "UP", object()):
@@ -307,14 +301,11 @@ class MockArgs:
 
 def _render_home_banner(cfg) -> None:
     linked = "https://www.linkedin.com/in/aaryanverma"
-    fig = Figlet(font="slant", width=200)
-    banner = fig.renderText("GRAY BOX").rstrip()
-    
-    # Print the banner and author with the new highlight color
-    print(f"{ColorCodes.GOLD}{ColorCodes.BOLD}{banner}{ColorCodes.RESET}")
+
+    # Plain text header - no ascii-art dependency.
+    print(f"{ColorCodes.GOLD}{ColorCodes.BOLD}◆ GRAY BOX{ColorCodes.RESET}")
     author = hyperlink("Aaryan Verma", linked)
-    print()
-    print(f"{ColorCodes.DIM} Made with ♥ by {author}{ColorCodes.RESET}\n")
+    print(f"{ColorCodes.DIM}Made with ♥ by {author}{ColorCodes.RESET}\n")
 
     # Get workspace info
     ws = cfg.workspace_manager.current()
@@ -324,25 +315,6 @@ def _render_home_banner(cfg) -> None:
     print(f"{ColorCodes.GREY}╭─────────────────────────────────────────────────────╮{ColorCodes.RESET}")
     print(f"{ColorCodes.GREY}│{ColorCodes.RESET}  Active Workspace: {ColorCodes.GOLD_BRIGHT}{ws_info:<33}{ColorCodes.RESET}{ColorCodes.GREY}│{ColorCodes.RESET}")
     print(f"{ColorCodes.GREY}╰─────────────────────────────────────────────────────╯{ColorCodes.RESET}\n")
-
-
-def _move_cursor_up(lines: int) -> None:
-    if lines > 0:
-        sys.stdout.write(f"\x1b[{lines}A")
-        sys.stdout.flush()
-
-
-def _render_menu(selected: int, options: list[tuple[str, str, str]]) -> None:
-    for i, (cmd, desc, icon) in enumerate(options):
-        if i == selected:
-            print(
-                f"  {ColorCodes.GOLD_BRIGHT}❯{ColorCodes.RESET} {icon}  "
-                f"{ColorCodes.BOLD}{ColorCodes.GOLD_BRIGHT}{cmd:<18}{ColorCodes.RESET}  "
-                f"{ColorCodes.DIM}{desc}{ColorCodes.RESET}"
-            )
-        else:
-            print(f"    {icon}  {cmd:<18}  {ColorCodes.DIM}{desc}{ColorCodes.RESET}")
-    sys.stdout.flush()
 
 
 def _interactive_input(prompt: str) -> str | None:
@@ -958,62 +930,6 @@ def _run_cli_command(cmd_name: str, config_path: str | None):
         cmd_workspace_switch(args)
     elif cmd_name == "create-workspace":
         cmd_workspace_create(args)
-
-
-# def interactive_main(config_path=None):
-#     options = [
-#         ("status", "Workspace summary", "📊"),
-#         ("capture", "Capture a note or import a file", "📥"),
-#         ("organize", "Process inbox items", "✨"),
-#         ("ask", "Ask a single question", "🧠"),
-#         ("chat", "Multi-turn Q&A with history", "💬"),
-#         ("search", "Search knowledge base", "🔍"),
-#         ("pages", "List all pages", "📄"),
-#         ("dupes", "Find possible duplicate pages", "🧬"),
-#         ("dashboard", "Generate HTML dashboard", "🌐"),
-#         ("switch-workspace", "Switch workspace", "🔄"),
-#         ("create-workspace", "Create workspace", "➕"),
-#         ("exit", "Quit", "❌"),
-#     ]
-#     selected = 0
-#     cfg = load_config(config_path)
-#     _hide_cursor()
-#     try:
-#         _clear_screen()
-#         _render_home_banner(cfg)
-#         _render_menu(selected, options)
-#         while True:
-#             ch = _getch()
-#             if ch in (Key.UP, "k"):
-#                 selected = (selected - 1) % len(options)
-#             elif ch in (Key.DOWN, "j"):
-#                 selected = (selected + 1) % len(options)
-#             elif ch == Key.ENTER:
-#                 cmd_name = options[selected][0]
-#                 if cmd_name == "exit":
-#                     return
-#                 _clear_screen()
-#                 try:
-#                     _run_cli_command(cmd_name, config_path)
-#                 except (EOFError, KeyboardInterrupt):
-#                     print(f"\n{ColorCodes.YELLOW}Cancelled.{ColorCodes.RESET}")
-#                 except Exception as e:
-#                     print(f"\n{ColorCodes.RED}Error: {e}{ColorCodes.RESET}")
-#                 _pause()
-#                 cfg = load_config(config_path)
-#                 _clear_screen()
-#                 _render_home_banner(cfg)
-#                 _render_menu(selected, options)
-#                 continue
-#             elif ch in (Key.ESC, "q"):
-#                 return
-#             else:
-#                 continue
-
-#             _move_cursor_up(len(options))
-#             _render_menu(selected, options)
-#     finally:
-#         _show_cursor()
 
 
 def build_parser() -> argparse.ArgumentParser:
