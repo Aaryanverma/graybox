@@ -344,40 +344,6 @@ def _interactive_input(prompt: str) -> str | None:
             sys.stdout.flush()
 
 
-def _menu_options(last_item_id: str | None = None) -> list[tuple[str, str, str]]:
-    """Menu entries for the interactive TUI. When a note was just captured,
-    an "append to last note" option is inserted at the top and pre-selected,
-    so a bare Enter reopens the note for a follow-up."""
-    options = [
-        ("status", "Workspace summary", "📊"),
-        ("capture", "Capture a note", "📥"),
-        ("import", "Import a text file", "📂"),
-        ("organize", "Process inbox items", "✨"),
-        ("ask", "Ask a single question", "🧠"),
-        ("chat", "Multi-turn Q&A with history", "💬"),
-        ("search", "Search knowledge base", "🔍"),
-        ("pages", "List all pages", "📄"),
-        ("dupes", "Find possible duplicate pages", "🧬"),
-        ("dashboard", "Generate HTML dashboard", "🌐"),
-        ("switch-workspace", "Switch workspace", "🔄"),
-        ("create-workspace", "Create workspace", "➕"),
-        ("exit", "Quit", "❌"),
-    ]
-    if last_item_id:
-        options.insert(0, ("append", "Append to last note", "✍️"))
-    return options
-
-
-def _default_menu_selection(last_item_id: str | None = None) -> int:
-    """Initial selection: "append" after a capture, otherwise "capture"."""
-    if last_item_id:
-        return 0
-    for i, (cmd, _, _) in enumerate(_menu_options()):
-        if cmd == "capture":
-            return i
-    return 0
-
-
 def _capture_note_interactive(cfg) -> InboxItem | None:
     """Straight to the note prompt — no "Press F to import" wait."""
     text = _interactive_input(
