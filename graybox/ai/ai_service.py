@@ -4,6 +4,34 @@ Service layer for External APIs (LLMs, Embeddings, Rerankers).
 """
 
 import os
+import socket
+
+# Must run BEFORE `from litellm import ...` below: litellm's own import does a
+# blocking fetch of its model-cost map, and on networks without routable IPv6
+# getaddrinfo lists IPv6 first, so that fetch (and every connection) hangs for
+# ~20s. Reorder resolution so IPv4 is tried first.
+_original_getaddrinfo = socket.getaddrinfo
+
+
+def _ipv4_first_order(addrinfo_list):
+    return sorted(addrinfo_list, key=lambda r: 0 if r[0] == socket.AF_INET else 1)
+
+
+def _prefer_ipv4_getaddrinfo(*args, **kwargs):
+    try:
+        return _ipv4_first_order(_original_getaddrinfo(*args, **kwargs))
+    except Exception:
+        return _original_getaddrinfo(*args, **kwargs)
+
+
+socket.getaddrinfo = _prefer_ipv4_getaddrinfo
+
+# litellm's import fetches its model-cost map from GitHub over the network,
+# which hangs ~20s on networks without routable IPv6 (and adds latency for
+# everyone). Use the local backup bundled with litellm instead — Gray Box
+# only needs `completion_cost` for logging.
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "true")
+
 from typing import Optional, List, Any
 from tenacity import (
     retry,
