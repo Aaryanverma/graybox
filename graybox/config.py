@@ -64,23 +64,32 @@ def _deep_merge(base: dict, override: dict) -> dict:
         else:
             out[k] = v
     return out
-
-
+    
 @dataclass
 class LLMConfig:
     model_name: str
     base_url: str
     temperature: float
+
+    # Authentication
+    auth: str = "api_key"
     api_key: str = ""
-    api_base: str = ""
     azure_ad_token: str = ""
+
+    # Azure / LiteLLM
+    api_base: str = ""
     api_version: str = ""
     deployment_id: str = ""
     api_type: str = "chat_completion"
-    max_tokens: int = 1024
-    max_completion_tokens: int = 1024
+
+    # Generation
+    max_tokens: int = 4096
+    max_new_tokens: int = 4096
+    max_completion_tokens: int = 4096
     top_p: float = 0.95
     top_k: int = 40
+
+    # Provider-specific passthrough
     kwargs: dict = field(default_factory=dict)
 
 
@@ -89,7 +98,7 @@ class RetrievalConfig:
     top_k: int
     min_score: float
     dedup_threshold: float = 0.85
-    semantic_min_score: float = 0.15
+    semantic_min_score: float = 0.6
     graph_max_hops: int = 1
     graph_max_nodes: int = 15
     graph_max_neighbors_per_node: int = 5
@@ -101,13 +110,20 @@ class RetrievalConfig:
 class EmbeddingsConfig:
     enabled: bool = False
     model_name: str = "text-embedding-3-small"
-    api_key: str = ""
     base_url: str = ""
+
+    # Authentication
+    auth: str = "api_key"
+    api_key: str = ""
+    azure_ad_token: str = ""
+
+    # Azure / LiteLLM
     api_base: str = ""
     input_type: str = ""
-    azure_ad_token: str = ""
     api_version: str = ""
     deployment_id: str = ""
+
+    # Provider-specific passthrough
     kwargs: dict = field(default_factory=dict)
 
 
@@ -267,6 +283,11 @@ def load_config(path: str | None = None) -> Config:
         "GRAYBOX_MIN_SCORE": ("retrieval", "min_score"),
         "GRAYBOX_DEDUP_THRESHOLD": ("retrieval", "dedup_threshold"),
         "GRAYBOX_SEMANTIC_MIN_SCORE": ("retrieval", "semantic_min_score"),
+        "GRAYBOX_EMBEDDINGS_ENABLED": ("embeddings", "enabled"),
+        "GRAYBOX_EMBEDDINGS_MODEL": ("embeddings", "model_name"),
+        "GRAYBOX_EMBEDDINGS_BASE_URL": ("embeddings", "base_url"),
+        "GRAYBOX_EMBEDDINGS_API_KEY": ("embeddings", "api_key"),
+        "GRAYBOX_EMBEDDINGS_INPUT_TYPE": ("embeddings", "input_type"),
     }
     for env_var, path_keys in env_map.items():
         if env_var in os.environ:
