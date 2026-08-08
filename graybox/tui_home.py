@@ -497,13 +497,10 @@ class GrayBoxApp(App):
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def interactive_main(
-    config_path: str | None = None,
-    *,
-    run_command: Callable[[str, str | None], None],
-) -> None:
-    _resize_terminal(110, 35)
-
+def _home_options(last_item_id: str | None = None) -> list[tuple[str, str]]:
+    """Menu entries for the Textual home. When a note was just captured, an
+    "append to last note" option is inserted at the top so a follow-up is one
+    keystroke away."""
     options: list[tuple[str, str]] = [
         ("status", "Workspace summary"),
         ("capture", "Capture a note or import"),
@@ -518,8 +515,23 @@ def interactive_main(
         ("create-workspace", "Create workspace"),
         ("exit", "Quit"),
     ]
+    if last_item_id:
+        options.insert(0, ("append", "Append to last note"))
+    return options
+
+
+def interactive_main(
+    config_path: str | None = None,
+    *,
+    run_command: Callable[[str, str | None, str | None], str | None],
+) -> None:
+    _resize_terminal(110, 35)
+
+    last_item_id: str | None = None
 
     while True:
+        options = _home_options(last_item_id)
+
         try:
             cfg = load_config(config_path)
             snapshot = build_home_snapshot(cfg)
@@ -564,7 +576,9 @@ def interactive_main(
                 subprocess.run(['cls'], shell=True)
         
         try:
-            run_command(selected_cmd, config_path)
+            result = run_command(selected_cmd, config_path, last_item_id)
+            if result:
+                last_item_id = result
         except (EOFError, KeyboardInterrupt):
             print("\nCancelled.")
         except Exception as e:
