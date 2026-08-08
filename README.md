@@ -1,7 +1,5 @@
 <div align="center">
 
-<!-- ![# Gray Box](assets/brand_logo.png) -->
-
 <img alt="Gray Box" src="assets/brand_logo.svg" width="50%">
 <br>
 <small><i>Remember Better.</i></small><br><br>
@@ -28,7 +26,13 @@ Talk to it like a notebook. It quietly turns your notes into a living, cross-lin
 <br>
 
 <p align="center">
-  <img src="assets/graybox demo.gif" alt="Gray Box Demo" width="900">
+  <a href="https://www.youtube.com/watch?v=Xdj1GCQoFNs">
+    <img
+      src="https://img.youtube.com/vi/Xdj1GCQoFNs/maxresdefault.jpg"
+      alt="Watch Gray Box Demo"
+      width="800"
+    />
+  </a>
 </p>
 
 </details>
@@ -40,10 +44,10 @@ Talk to it like a notebook. It quietly turns your notes into a living, cross-lin
 You constantly generate information you'd like to hold onto — a decision made in a work meeting, a teammate's name and role, a task someone owes you, but just as easily a friend's birthday, a book someone recommended, notes from a doctor's visit, or an idea you had in the shower. Most of it evaporates. **Gray Box** is a small, local-first tool that:
 
 1. **Captures** anything you type or paste, instantly and without judgment — work notes, personal journaling, project ideas, whatever.
-2. **Organizes** it in the background — pulling out people, projects, tasks, and decisions into their own Markdown pages, all cross-linked.
+2. **Organizes** it in the background — pulling out people, projects, tasks, actions, meetings, events, and decisions into their own Markdown pages, all cross-linked.
 3. **Answers questions** about anything you've captured, citing exactly which note or page it got the answer from — and refusing to guess when it doesn't know.
 
-It ships with page types that skew toward work (`project`, `meeting`, `decision`, `task`) since that's the original use case, but there's nothing work-specific in how it works — a `person` page doesn't care if it's a coworker or a friend, and a `topic`/`journal` page works just as well for a hobby or a personal reflection as it does for a work concept. Use one workspace for work and another for personal life (see [Workspaces](#workspaces)), or mix both in one — it's your call.
+It ships with page types that skew toward work (`project`, `meeting`, `decision`, `task`, `action`) since that's the original use case, but there's nothing work-specific in how it works — a `person` page doesn't care if it's a coworker or a friend, and a `topic`/`journal`/`event` page works just as well for a hobby or a personal reflection as it does for a work concept. Use one workspace for work and another for personal life (see [Workspaces](#workspaces)), or mix both in one — it's your call.
 
 No vector database required. No cloud lock-in. No proprietary format. Just `.md` files on your disk that you (or any other tool) can read forever.
 
@@ -85,7 +89,7 @@ flowchart LR
     A["✍️ You type a note"] --> B["📥 Capture Agent"]
     B -->|"writes verbatim, never edited"| C[("inbox/*.md")]
     C --> D["🧭 Organizer Agent"]
-    D -->|"LLM extracts entities,\ntasks & decisions"| E[("wiki/*.md")]
+    D -->|"LLM extracts entities, tasks,\nactions, events & decisions"| E[("wiki/*.md")]
     E --> F["🔍 Search + 1-hop graph expansion"]
     G["❓ You ask a question"] --> H["📚 Retrieval Agent"]
     H --> F
@@ -97,8 +101,8 @@ flowchart LR
 **The agents, in plain terms:**
 
 - **Capture** — does *almost nothing*, on purpose. It writes your text to `inbox/` untouched. No parsing, no AI, no delay. This step should never be the thing that loses your idea.
-- **Organizer** — runs on demand (`organize`). It reads unprocessed inbox items, asks the LLM to extract structured facts as JSON (people, projects, tasks, decisions, relationships), then *deterministic Python code* — not the LLM — creates/merges the actual wiki pages and maintains backlinks. This keeps writes predictable and auditable.
-- **Retrieval** — when you `ask` or `chat`, it searches wiki pages first (keyword + optional semantic), expands one hop through `related`/`backlinks` so linked-but-not-lexically-matching pages still surface, then asks the LLM to answer **using only that context**, with inline citations like `[person/aaryan]`. If nothing relevant is found, it says so honestly instead of making something up — falling back to raw inbox search only as a last resort.
+- **Organizer** — runs on demand (`organize`). It reads unprocessed inbox items and asks the LLM to extract structured facts as JSON — people, projects, tasks, actions, meetings, events, decisions, and the relationships between them — favoring high recall on anything the note is actually *about* while ignoring incidental words that merely appear in it (a vague note still yields at least a `topic` page rather than nothing). *Deterministic Python code* — not the LLM — then creates/merges the actual wiki pages and maintains backlinks, so writes stay predictable and auditable. Reconciling a note against an existing page (instead of creating a near-duplicate) only happens on a high-confidence name/date match; a loosely-related note gets its own page rather than being forced onto an unrelated one.
+- **Retrieval** — when you `ask` or `chat`, it searches wiki pages first (keyword + optional semantic), expands one hop through `related`/`backlinks` so linked-but-not-lexically-matching pages still surface, then asks the LLM to answer **using only that context**, with inline citations like `[person/aaryan]`. If a confident wiki match exists, that's the answer. If not, it falls back to raw, un-organized inbox captures or to weaker wiki matches — but only ever with an explicit warning stitched into the answer telling you the evidence is unorganized or loosely related, never silently. If nothing relevant is found at all, it says so honestly instead of making something up.
 - **Curate** — human-in-the-loop fixes (`merge`, `edit`, `delete`) for organizer mistakes: duplicate pages, wrong titles/types, hallucinated entities. Nothing here runs automatically; every action is an explicit command, and nothing here calls the LLM.
 
 ---
@@ -132,19 +136,8 @@ Then point it at an LLM. Set your API key however your provider expects it — e
 - Open a terminal/CMD
 
 - Download this [Config File](graybox/config.example.yaml) into your working directory, update it with your workspace, LLM and other details.
- 
-- The fastest way to try Gray Box is to just run it with no arguments and let the interactive menu guide you:
- 
-```bash
-graybox
-```
 
-This drops you into a full-screen terminal UI — arrow keys to move, Enter to select — where `capture`, `organize`, `ask`, `chat`, `search`, `pages`, `dupes`, `dashboard`, and workspace switching are all just a keystroke away. It's the recommended way to get a feel for the whole loop (capture → organize → ask) without memorizing any commands.
-<div align='center'>
-<img src = 'assets/tui.png' width=700></img>
-</div>
-
-- If you'd rather script it or wire it into other tools, every action above is also a plain CLI subcommand:
+- The fastest way to try Gray Box is to just run it with no arguments and let the interactive menu guide you (see [Interactive TUI](#interactive-tui) below), or script it directly with the CLI subcommands shown next.
 
 ```bash
 # 1. Capture whatever's on your mind — no structure required
@@ -170,7 +163,19 @@ graybox organize --dry-run
 ```
  
 This still calls the LLM and shows you exactly which pages would be created (`new`) or updated (`updated`) — but writes nothing to disk, and doesn't mark anything as processed, so a real run afterward picks up right where the dry run left off.
- 
+
+---
+
+## Interactive TUI
+
+Run `graybox` with no arguments to drop into a full-screen terminal UI (built on [Textual](https://github.com/Textualize/textual)) — arrow keys to move, Enter to select — where `capture`, `organize`, `ask`, `chat`, `search`, `pages`, `dupes`, `dashboard`, and workspace switching are all just a keystroke away. It's the recommended way to get a feel for the whole loop (capture → organize → ask) without memorizing any commands.
+
+<div align='center'>
+<img src = 'assets/tui.png' width=700></img>
+</div>
+
+If you'd rather script Gray Box or wire it into other tools, every action in the TUI is also a plain CLI subcommand — that's what the [Quick start](#quick-start) walkthrough above and the [Command reference](#command-reference) below cover.
+
 ---
 
 ## Workspaces
@@ -211,7 +216,7 @@ A few things worth knowing:
 | `graybox ask "<question>"` | Searches the wiki (keyword + optional semantic + 1-hop graph expansion), asks the LLM to answer using only what it finds, and prints the answer plus its sources. |
 | `graybox chat` | Multi-turn Q&A session — ask follow-ups without returning to the main menu each time. Conversation history is threaded into both search and the LLM prompt, so pronouns/ellipsis ("when's it due?", "why him?") resolve against the previous turn. Grounding rules still apply: history only resolves references, never supplies facts on its own. `--all` to search across every workspace. |
 | `graybox search "<query>"` | Fast local keyword search over wiki pages — no LLM call. `--top-k N` to control result count. |
-| `graybox pages` | Lists all wiki pages. Filter with `--type project\|person\|meeting\|technology\|topic\|task\|action\|decision`. |
+| `graybox pages` | Lists all wiki pages. Filter with `--type project\|person\|meeting\|technology\|topic\|task\|action\|decision\|event`. |
 | `graybox status` | Quick summary: workspace path, inbox count, page count, active LLM model. |
 | `graybox dashboard` | Generates a self-contained, read-only HTML dashboard (`<workspace>/exports/dashboard.html`) with a task kanban board, filters, and a force-directed graph of your wiki's cross-links. Never writes back to `inbox/` or `wiki/`. [See Example](assets/dashboard.png)|
 | `graybox dupes` | Flags wiki pages that *look* like duplicates (fuzzy name match). Suggestion only — nothing is merged automatically. `--type` to restrict, `--threshold` (0–1, closer to 1 = more similar; default: `retrieval.dedup_threshold`, 0.85) to tune sensitivity. |
@@ -450,7 +455,6 @@ Longevity and inspectability. A `.md` file with YAML frontmatter opens in litera
 
 ## Roadmap
 
-- [ ] Dashboard Improvements (WIP)
 - [ ] Decision Intelligence & Memory Timeline
 - [ ] Meeting summarization
 - [ ] Automatic daily journal digest

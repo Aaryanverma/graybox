@@ -1017,7 +1017,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_pages.add_argument(
         "--type",
         default=None,
-        help="Filter by type: project, person, meeting, technology, company, topic, task, action, decision",
+        help="Filter by type: project, person, meeting, technology, company, topic, task, action, decision, event",
     )
     p_pages.set_defaults(func=cmd_pages)
 
