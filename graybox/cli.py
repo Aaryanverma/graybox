@@ -5,21 +5,11 @@ import os
 import sys
 from enum import Enum
 
-from graybox.ai import AIService
 from graybox.capture import capture, capture_file
 from graybox.config import load_config
-from graybox.curate import (
-    delete_page,
-    edit_page,
-    find_possible_duplicates,
-    merge_pages,
-)
 from graybox.dashboard import write_dashboard
-from graybox.summarizer import refresh_all_summaries
 from graybox.embedding_index import ensure_indexed
 from graybox.forget import forget_item
-from graybox.organizer import organize_all
-from graybox.retrieval import ask, ConversationTurn
 from graybox.search import search_all
 from graybox.storage import (
     ensure_workspace,
@@ -397,6 +387,8 @@ def cmd_capture(args):
     )
 
 def cmd_organize(args):
+    from graybox.ai import AIService
+
     cfg = load_config(args.config)
     ensure_workspace(cfg)
     llm = AIService(cfg)
@@ -405,6 +397,8 @@ def cmd_organize(args):
             f"{ColorCodes.YELLOW}⚠️  [Dry-Run] No files will be written to disk; items stay unprocessed.{ColorCodes.RESET}\n"
         )
     with Spinner("Organizing inbox"):
+        from graybox.organizer import organize_all
+
         report = organize_all(cfg, llm, dry_run=args.dry_run)
     for entry in report["processed"]:
         pages = ", ".join(entry["pages"]) or "(no entities extracted)"
@@ -423,10 +417,14 @@ def cmd_organize(args):
     )
 
 def cmd_ask(args):
+    from graybox.ai import AIService
+
     cfg = load_config(args.config)
     ensure_workspace(cfg)
     llm = AIService(cfg)
     with Spinner("Thinking"):
+        from graybox.retrieval import ask
+
         answer = ask(cfg, llm, args.question, all_workspaces=args.all)
     print(f"\n{ColorCodes.GOLD_BRIGHT}✨{ColorCodes.RESET} {ColorCodes.TEXT_BRIGHT}{answer.text}{ColorCodes.RESET}\n")
     if answer.sources:
@@ -440,8 +438,12 @@ def cmd_ask(args):
         )
 
 def cmd_chat(args):
+    from graybox.ai import AIService
+
     cfg = load_config(args.config)
     ensure_workspace(cfg)
+    from graybox.retrieval import ask, ConversationTurn
+
     llm = AIService(cfg)
     history: list[ConversationTurn] = []
 
@@ -610,6 +612,8 @@ def cmd_dupes(args):
     threshold = (
         args.threshold if args.threshold is not None else cfg.retrieval.dedup_threshold
     )
+    from graybox.curate import find_possible_duplicates
+
     candidates = find_possible_duplicates(cfg, page_type=args.type, threshold=threshold)
     if not candidates:
         print(
@@ -637,6 +641,8 @@ def cmd_merge(args):
     cfg = load_config(args.config)
     ensure_workspace(cfg)
     try:
+        from graybox.curate import merge_pages
+
         report = merge_pages(
             cfg, args.primary_ref, args.secondary_ref, dry_run=args.dry_run
         )
@@ -660,6 +666,8 @@ def cmd_edit(args):
     cfg = load_config(args.config)
     ensure_workspace(cfg)
     try:
+        from graybox.curate import edit_page
+
         report = edit_page(
             cfg,
             args.ref,
@@ -689,6 +697,8 @@ def cmd_delete(args):
     cfg = load_config(args.config)
     ensure_workspace(cfg)
     try:
+        from graybox.curate import delete_page
+
         report = delete_page(cfg, args.ref, dry_run=args.dry_run)
     except ValueError as e:
         print(f"{ColorCodes.RED}✗ {e}{ColorCodes.RESET}", file=sys.stderr)
@@ -713,6 +723,8 @@ def cmd_rebuild_index(args):
             f"{ColorCodes.DIM}Set embeddings.enabled: true to use semantic search.{ColorCodes.RESET}"
         )
         return
+    from graybox.ai import AIService
+
     llm = AIService(cfg)
     pages = list_pages(cfg, args.type)
     indexed = 0
@@ -734,6 +746,8 @@ def cmd_rebuild_index(args):
     )
 
 def cmd_refresh(args):
+    from graybox.ai import AIService
+
     cfg = load_config(args.config)
     ensure_workspace(cfg)
     llm = AIService(cfg)
@@ -742,6 +756,8 @@ def cmd_refresh(args):
             f"{ColorCodes.YELLOW}⚠️  [Dry-Run] No files will be written.{ColorCodes.RESET}\n"
         )
     with Spinner("Refreshing summaries"):
+        from graybox.summarizer import refresh_all_summaries
+
         report = refresh_all_summaries(
             cfg, llm, page_type=args.type, dry_run=args.dry_run, min_notes=args.min_notes
         )
