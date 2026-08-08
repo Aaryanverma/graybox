@@ -26,7 +26,7 @@ Talk to it like a notebook. It quietly turns your notes into a living, cross-lin
 <br>
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=Xdj1GCQoFNs" target="_blank" rel="noreferrer noopener">
+  <a href="https://www.youtube.com/watch?v=Xdj1GCQoFNs" target="_blank">
     <img
       src="https://img.youtube.com/vi/Xdj1GCQoFNs/maxresdefault.jpg"
       alt="Watch Gray Box Demo"
