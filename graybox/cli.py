@@ -208,6 +208,25 @@ def _normalize_readchar_key(k: str) -> Key | str:
     return k
 
 
+def _utf8_sequence_len(first_byte: int) -> int:
+    if first_byte < 0x80:
+        return 1
+    if 0xC2 <= first_byte <= 0xDF:
+        return 2
+    if 0xE0 <= first_byte <= 0xEF:
+        return 3
+    if 0xF0 <= first_byte <= 0xF4:
+        return 4
+    return 1
+
+
+def _decode_key(data: bytes) -> str:
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return ""
+
+
 def _getch() -> Key | str:
     try:
         import msvcrt
@@ -223,7 +242,11 @@ def _getch() -> Key | str:
             return Key.ESC
         if ch in (b"\b",):
             return Key.BACKSPACE
-        return ch.decode("utf-8", "ignore")
+        data = bytearray(ch)
+        expected = _utf8_sequence_len(ch[0])
+        while len(data) < expected and msvcrt.kbhit():
+            data += msvcrt.getch()
+        return _decode_key(bytes(data))
     except ImportError:
         pass
 
@@ -235,14 +258,24 @@ def _getch() -> Key | str:
         fd = sys.stdin.fileno()
         old = termios.tcgetattr(fd)
         try:
-            tty.setraw(fd)
+            tty.setraw(fd, termios.TCSANOW)
             ch = os.read(fd, 1)
             if ch != b"\x1b":
                 if ch in (b"\n", b"\r"):
                     return Key.ENTER
-                if ch in (b"\b", b""):
+                if ch in (b"\b", b"\x7f"):
                     return Key.BACKSPACE
-                return ch.decode("utf-8", "ignore")
+                data = bytearray(ch)
+                expected = _utf8_sequence_len(ch[0])
+                while len(data) < expected:
+                    r, _, _ = select.select([fd], [], [], 0.01)
+                    if not r:
+                        break
+                    more = os.read(fd, 1)
+                    if not more:
+                        break
+                    data += more
+                return _decode_key(bytes(data))
 
             seq = b"\x1b"
             while True:
