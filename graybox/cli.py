@@ -8,10 +8,12 @@ from enum import Enum
 from graybox.capture import capture, capture_file
 from graybox.config import load_config
 from graybox.dashboard import write_dashboard
+from graybox.models import InboxItem
 from graybox.embedding_index import ensure_indexed
 from graybox.forget import forget_item
 from graybox.search import search_all
 from graybox.storage import (
+    append_inbox_item,
     ensure_workspace,
     list_inbox_items,
     list_pages,
@@ -332,6 +334,83 @@ def _interactive_input(prompt: str) -> str | None:
             sys.stdout.flush()
 
 
+def _menu_options(last_item_id: str | None = None) -> list[tuple[str, str, str]]:
+    """Menu entries for the interactive TUI. When a note was just captured,
+    an "append to last note" option is inserted at the top and pre-selected,
+    so a bare Enter reopens the note for a follow-up."""
+    options = [
+        ("status", "Workspace summary", "📊"),
+        ("capture", "Capture a note", "📥"),
+        ("import", "Import a text file", "📂"),
+        ("organize", "Process inbox items", "✨"),
+        ("ask", "Ask a single question", "🧠"),
+        ("chat", "Multi-turn Q&A with history", "💬"),
+        ("search", "Search knowledge base", "🔍"),
+        ("pages", "List all pages", "📄"),
+        ("dupes", "Find possible duplicate pages", "🧬"),
+        ("dashboard", "Generate HTML dashboard", "🌐"),
+        ("switch-workspace", "Switch workspace", "🔄"),
+        ("create-workspace", "Create workspace", "➕"),
+        ("exit", "Quit", "❌"),
+    ]
+    if last_item_id:
+        options.insert(0, ("append", "Append to last note", "✍️"))
+    return options
+
+
+def _default_menu_selection(last_item_id: str | None = None) -> int:
+    """Initial selection: "append" after a capture, otherwise "capture"."""
+    if last_item_id:
+        return 0
+    for i, (cmd, _, _) in enumerate(_menu_options()):
+        if cmd == "capture":
+            return i
+    return 0
+
+
+def _capture_note_interactive(cfg) -> InboxItem | None:
+    """Straight to the note prompt — no "Press F to import" wait."""
+    text = _interactive_input(
+        f"{ColorCodes.BOLD}Note text {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
+    )
+    if text is None or not text.strip():
+        return None
+    item = capture(cfg, text.strip())
+    print(
+        f"{ColorCodes.GREEN}✓ Captured{ColorCodes.RESET} {ColorCodes.DIM}→{ColorCodes.RESET} "
+        f"{ColorCodes.CYAN}inbox/{item.id}.md{ColorCodes.RESET}"
+    )
+    return item
+
+
+def _append_note_interactive(cfg, item_id: str) -> InboxItem | None:
+    text = _interactive_input(
+        f"{ColorCodes.BOLD}Add to last note {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
+    )
+    if text is None or not text.strip():
+        return None
+    item = append_inbox_item(cfg, item_id, text.strip())
+    print(
+        f"{ColorCodes.GREEN}✓ Appended{ColorCodes.RESET} {ColorCodes.DIM}→{ColorCodes.RESET} "
+        f"{ColorCodes.CYAN}inbox/{item.id}.md{ColorCodes.RESET}"
+    )
+    return item
+
+
+def _import_file_interactive(cfg) -> InboxItem | None:
+    path = _interactive_input(
+        f"{ColorCodes.BOLD}File path {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
+    )
+    if path is None or not path.strip():
+        return None
+    item = capture_file(cfg, path.strip())
+    print(
+        f"{ColorCodes.GREEN}✓ Imported{ColorCodes.RESET} {ColorCodes.DIM}→{ColorCodes.RESET} "
+        f"{ColorCodes.CYAN}inbox/{item.id}.md{ColorCodes.RESET}"
+    )
+    return item
+
+
 def _pick_workspace(cfg, prompt: str = "Select workspace") -> Workspace | None:
     workspaces = cfg.workspace_manager.list()
     if not workspaces:
@@ -373,6 +452,7 @@ def _pick_workspace(cfg, prompt: str = "Select workspace") -> Workspace | None:
             return workspaces[selected]
         elif ch in (Key.ESC, "q"):
             return None
+
 
 def cmd_capture(args):
     cfg = load_config(args.config)
@@ -864,7 +944,9 @@ def cmd_workspace_create(args):
     )
 
 
-def _run_cli_command(cmd_name: str, config_path: str | None):
+def _run_cli_command(
+    cmd_name: str, config_path: str | None, last_item_id: str | None = None
+) -> str | None:
     args = MockArgs(
         config=config_path,
         dry_run=False,
@@ -896,28 +978,19 @@ def _run_cli_command(cmd_name: str, config_path: str | None):
     if cmd_name == "status":
         cmd_status(args)
     elif cmd_name == "capture":
-        print(
-            f"{ColorCodes.DIM}Press {ColorCodes.RESET}{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}F{ColorCodes.RESET}"
-            f"{ColorCodes.DIM} to import a file, or any other key to type a note directly "
-            f"(Esc to cancel){ColorCodes.RESET}"
-        )
-        choice = _getch()
-        if choice == Key.ESC:
-            return
-        if isinstance(choice, str) and choice.lower() == "f":
-            path = _interactive_input(
-                f"{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}File path {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
-            )
-            if path is not None and path.strip():
-                args.file = path.strip()
-                cmd_capture(args)
-        else:
-            text = _interactive_input(
-                f"{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}Note text {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
-            )
-            if text is not None and text.strip():
-                args.text = text.strip()
-                cmd_capture(args)
+        cfg = load_config(config_path)
+        item = _capture_note_interactive(cfg)
+        return item.id if item else None
+    elif cmd_name == "append":
+        cfg = load_config(config_path)
+        if not last_item_id:
+            return None
+        item = _append_note_interactive(cfg, last_item_id)
+        return item.id if item else None
+    elif cmd_name == "import":
+        cfg = load_config(config_path)
+        item = _import_file_interactive(cfg)
+        return item.id if item else None
     elif cmd_name == "organize":
         cmd_organize(args)
     elif cmd_name == "ask":
