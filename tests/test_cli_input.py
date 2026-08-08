@@ -15,33 +15,28 @@ class TestMenuDefaults:
     pre-selected after a capture."""
 
     def test_default_selection_is_capture_without_last_item(self):
-        from graybox.cli import _default_menu_selection, _menu_options
+        from graybox.tui_home import _default_home_selection, _home_options
 
-        idx = _default_menu_selection(None)
-        assert _menu_options(None)[idx][0] == "capture"
+        options = _home_options(None)
+        idx = _default_home_selection(options)
+        assert options[idx][0] == "capture"
 
     def test_append_preselected_with_last_item(self):
-        from graybox.cli import _default_menu_selection, _menu_options
+        from graybox.tui_home import _default_home_selection, _home_options
 
-        options = _menu_options("some-item-id")
+        options = _home_options("some-item-id")
         assert options[0][0] == "append"
-        assert _default_menu_selection("some-item-id") == 0
-
-    def test_import_is_a_plain_menu_item(self):
-        from graybox.cli import _menu_options
-
-        cmds = [c for c, _, _ in _menu_options(None)]
-        assert "import" in cmds
-        assert "capture" in cmds
+        assert _default_home_selection(options) == 0
 
     def test_every_menu_option_has_a_handler(self):
         """Every menu entry must be handled by _run_cli_command (no drift)."""
         import inspect
 
-        from graybox.cli import _menu_options, _run_cli_command
+        from graybox.cli import _run_cli_command
+        from graybox.tui_home import _home_options
 
         src = inspect.getsource(_run_cli_command)
-        for name, _, _ in _menu_options():
+        for name, _ in _home_options():
             if name == "exit":
                 continue
             assert f'cmd_name == "{name}"' in src, f"no handler for menu item {name}"
@@ -227,6 +222,25 @@ class TestTuiHomeOptions:
 
         cmds = [c for c, _ in _home_options(None)]
         assert "append" not in cmds
+
+
+class TestAppendStateTransition:
+    """A capture seeds the append target; using append consumes it."""
+
+    def test_capture_sets_last_item(self):
+        from graybox.tui_home import _next_last_item_id
+
+        assert _next_last_item_id("capture", "item-1") == "item-1"
+
+    def test_append_consumes_last_item(self):
+        from graybox.tui_home import _next_last_item_id
+
+        assert _next_last_item_id("append", "item-1") is None
+
+    def test_no_result_keeps_no_target(self):
+        from graybox.tui_home import _next_last_item_id
+
+        assert _next_last_item_id("status", None) is None
 
 
 class TestUtf8SequenceLen:
