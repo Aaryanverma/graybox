@@ -110,7 +110,7 @@ Existing pages already in the knowledge base that MAY relate to this note
 task, event, or decision). This is provided so you can RECONCILE state changes
 against what already exists, instead of creating a disconnected duplicate:
 
-{{existing_context}}
+{existing_context}
 
 UNIVERSAL RECONCILIATION RULE:
 - Before extracting ANY entity, task, action, event, decision, or meeting, 
@@ -205,8 +205,7 @@ Rules:
 
 NOTE:
 ---
-{{note}}
----
+{note}
 """
 
 RETRIEVAL_SYSTEM = """You are Gray Box's knowledge retrieval assistant.
