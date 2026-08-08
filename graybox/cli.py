@@ -5,7 +5,6 @@ import os
 import sys
 from enum import Enum
 
-from pyfiglet import Figlet
 from graybox.ai import AIService
 from graybox.capture import capture, capture_file
 from graybox.config import load_config
@@ -30,6 +29,7 @@ from graybox.storage import (
     load_forgotten,
 )
 from graybox.workspace import Workspace
+from graybox.tui_home import interactive_main
 import logging
 
 try:
@@ -41,34 +41,24 @@ import itertools
 import threading
 import time
 
-# class ColorCodes:
-#     RESET = "\x1b[0m"
-#     BOLD = "\x1b[1m"
-#     DIM = "\x1b[2m"
-#     RED = "\x1b[31m"
-#     GREEN = "\x1b[32m"
-#     YELLOW = "\x1b[33m"
-#     BLUE = "\x1b[34m"
-#     CYAN = "\x1b[36m"
-#     GREY = "\x1b[90m"
-
 class ColorCodes:
     # Text Modifiers
     RESET = "\x1b[0m"
     BOLD = "\x1b[1m"
     DIM = "\x1b[2m"
 
-    # TrueColor Foreground Palette (24-bit RGB)
-    RED = "\x1b[38;2;237;135;150m"      # Soft Peach / Red
-    GREEN = "\x1b[38;2;166;218;149m"    # Sage Green
-    YELLOW = "\x1b[38;2;238;212;159m"   # Warm Gold / Yellow
-    BLUE = "\x1b[38;2;138;173;244m"     # Lavender / Blue
-    CYAN = "\x1b[38;2;139;213;202m"     # Muted Teal / Cyan
-    GREY = "\x1b[38;2;110;115;141m"     # Slate Grey
+    GOLD = "\x1b[38;2;212;175;55m"             # #D4AF37 — primary luxury gold
+    GOLD_BRIGHT = "\x1b[38;2;230;198;104m"     # #E6C668 — active / highlight gold
+    RED = "\x1b[38;2;237;135;150m"             # Soft Peach / Red
+    GREEN = "\x1b[38;2;166;218;149m"           # Sage Green
+    YELLOW = GOLD_BRIGHT
+    BLUE = GOLD
+    CYAN = GOLD_BRIGHT
+    GREY = "\x1b[38;2;105;95;70m"               # Warm muted gold-grey
 
     # Additional UI Utilities
-    SURFACE = "\x1b[48;2;54;58;79m"     # Background highlight for active menu items
-    TEXT_BRIGHT = "\x1b[38;2;202;211;245m" # Off-white primary text
+    SURFACE = "\x1b[48;2;70;58;25m"             # Subtle gold-tinted active surface
+    TEXT_BRIGHT = "\x1b[38;2;245;239;218m"      # Warm off-white
 
 
 class Spinner:
@@ -182,11 +172,6 @@ def hyperlink(text: str, url: str) -> str:
     OSC = "\x1b]"
     BEL = "\a"
     return f"{OSC}8;;{url}{BEL}{text}{OSC}8;;{BEL}"
-
-
-def _pause(msg: str = "Press any key to return to menu...") -> None:
-    print(f"\n{ColorCodes.DIM}{msg}{ColorCodes.RESET}")
-    _getch()
 
 
 def _normalize_readchar_key(k: str) -> Key | str:
@@ -316,14 +301,11 @@ class MockArgs:
 
 def _render_home_banner(cfg) -> None:
     linked = "https://www.linkedin.com/in/aaryanverma"
-    fig = Figlet(font="slant", width=200)
-    banner = fig.renderText("GRAY BOX").rstrip()
-    
-    # Print the banner and author with the new highlight color
-    print(f"{ColorCodes.BLUE}{ColorCodes.BOLD}{banner}{ColorCodes.RESET}")
+
+    # Plain text header - no ascii-art dependency.
+    print(f"{ColorCodes.GOLD}{ColorCodes.BOLD}◆ GRAY BOX{ColorCodes.RESET}")
     author = hyperlink("Aaryan Verma", linked)
-    print()
-    print(f"{ColorCodes.DIM} Made with ♥ by {author}{ColorCodes.RESET}\n")
+    print(f"{ColorCodes.DIM}Made with ♥ by {author}{ColorCodes.RESET}\n")
 
     # Get workspace info
     ws = cfg.workspace_manager.current()
@@ -331,27 +313,8 @@ def _render_home_banner(cfg) -> None:
     
     # Render a modern rounded box for the workspace info
     print(f"{ColorCodes.GREY}╭─────────────────────────────────────────────────────╮{ColorCodes.RESET}")
-    print(f"{ColorCodes.GREY}│{ColorCodes.RESET}  Active Workspace: {ColorCodes.GREEN}{ws_info:<33}{ColorCodes.RESET}{ColorCodes.GREY}│{ColorCodes.RESET}")
+    print(f"{ColorCodes.GREY}│{ColorCodes.RESET}  Active Workspace: {ColorCodes.GOLD_BRIGHT}{ws_info:<33}{ColorCodes.RESET}{ColorCodes.GREY}│{ColorCodes.RESET}")
     print(f"{ColorCodes.GREY}╰─────────────────────────────────────────────────────╯{ColorCodes.RESET}\n")
-
-
-def _move_cursor_up(lines: int) -> None:
-    if lines > 0:
-        sys.stdout.write(f"\x1b[{lines}A")
-        sys.stdout.flush()
-
-
-def _render_menu(selected: int, options: list[tuple[str, str, str]]) -> None:
-    for i, (cmd, desc, icon) in enumerate(options):
-        if i == selected:
-            print(
-                f"  {ColorCodes.BLUE}❯{ColorCodes.RESET} {icon}  "
-                f"{ColorCodes.BOLD}{ColorCodes.BLUE}{cmd:<18}{ColorCodes.RESET}  "
-                f"{ColorCodes.DIM}{desc}{ColorCodes.RESET}"
-            )
-        else:
-            print(f"    {icon}  {cmd:<18}  {ColorCodes.DIM}{desc}{ColorCodes.RESET}")
-    sys.stdout.flush()
 
 
 def _interactive_input(prompt: str) -> str | None:
@@ -394,7 +357,7 @@ def _pick_workspace(cfg, prompt: str = "Select workspace") -> Workspace | None:
     while True:
         _clear_screen()
         _render_home_banner(cfg)
-        print(f"{ColorCodes.BOLD}{prompt}{ColorCodes.RESET}\n")
+        print(f"{ColorCodes.GOLD}{ColorCodes.BOLD}{prompt}{ColorCodes.RESET}\n")
         for i, ws in enumerate(workspaces):
             active = "  "
             if i == selected:
@@ -405,7 +368,7 @@ def _pick_workspace(cfg, prompt: str = "Select workspace") -> Workspace | None:
             desc = ws.description or "No description"
             path = str(ws.root)
             print(
-                f"{active} {marker} {ColorCodes.BOLD}{ws.name:<20}{ColorCodes.RESET} {ColorCodes.DIM}{desc}{ColorCodes.RESET}"
+                f"{active} {marker} {ColorCodes.TEXT_BRIGHT}{ColorCodes.BOLD}{ws.name:<20}{ColorCodes.RESET} {ColorCodes.DIM}{desc}{ColorCodes.RESET}"
             )
             print(f"    {ColorCodes.DIM}{path}{ColorCodes.RESET}")
         print(
@@ -421,76 +384,6 @@ def _pick_workspace(cfg, prompt: str = "Select workspace") -> Workspace | None:
         elif ch in (Key.ESC, "q"):
             return None
 
-
-def _run_cli_command(name: str, config_path: str | None) -> None:
-    args = MockArgs(
-        config=config_path,
-        dry_run=False,
-        type=None,
-        top_k=10,
-        threshold=None,
-        file=None,
-        text=None,
-        question=None,
-        query=None,
-        all=False,
-    )
-    print(
-        f"{ColorCodes.BLUE}◆ Gray Box{ColorCodes.RESET} {ColorCodes.DIM}› {name}{ColorCodes.RESET}\n"
-    )
-    if name == "status":
-        cmd_status(args)
-    elif name == "capture":
-        print(
-            f"{ColorCodes.DIM}Press {ColorCodes.RESET}{ColorCodes.BOLD}F{ColorCodes.RESET}"
-            f"{ColorCodes.DIM} to import a file, or any other key to type a note directly "
-            f"(Esc to cancel){ColorCodes.RESET}"
-        )
-        choice = _getch()
-        if choice == Key.ESC:
-            return
-        if isinstance(choice, str) and choice.lower() == "f":
-            path = _interactive_input(
-                f"{ColorCodes.BOLD}File path {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
-            )
-            if path is not None and path.strip():
-                args.file = path.strip()
-                cmd_capture(args)
-        else:
-            text = _interactive_input(
-                f"{ColorCodes.BOLD}Note text {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
-            )
-            if text is not None and text.strip():
-                args.text = text.strip()
-                cmd_capture(args)
-    elif name == "organize":
-        cmd_organize(args)
-    elif name == "ask":
-        q = _interactive_input(
-            f"{ColorCodes.BOLD}Question {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
-        )
-        if q is not None and q.strip():
-            args.question = q.strip()
-            cmd_ask(args)
-    elif name == "search":
-        q = _interactive_input(
-            f"{ColorCodes.BOLD}Search query {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
-        )
-        if q is not None and q.strip():
-            args.query = q.strip()
-            cmd_search(args)
-    elif name == "pages":
-        cmd_pages(args)
-    elif name == "dupes":
-        cmd_dupes(args)
-    elif name == "dashboard":
-        cmd_dashboard(args)
-    elif name == "switch-workspace":
-        cmd_workspace_switch(args)
-    elif name == "create-workspace":
-        cmd_workspace_create(args)
-
-
 def cmd_capture(args):
     cfg = load_config(args.config)
     ensure_workspace(cfg)
@@ -502,7 +395,6 @@ def cmd_capture(args):
     print(
         f"{ColorCodes.GREEN}✓ Captured{ColorCodes.RESET} {ColorCodes.DIM}→{ColorCodes.RESET} {ColorCodes.CYAN}inbox/{item.id}.md{ColorCodes.RESET}"
     )
-
 
 def cmd_organize(args):
     cfg = load_config(args.config)
@@ -527,7 +419,7 @@ def cmd_organize(args):
         )
     verb = "Would process" if args.dry_run else "Processed"
     print(
-        f"\n{ColorCodes.BOLD}✨ {verb}: {ColorCodes.CYAN}{len(report['processed'])}{ColorCodes.RESET}{ColorCodes.BOLD} items{ColorCodes.RESET} {ColorCodes.DIM}(Errors: {len(report['errors'])}){ColorCodes.RESET}"
+        f"\n{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}✨ {verb}: {ColorCodes.CYAN}{len(report['processed'])}{ColorCodes.RESET}{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD} items{ColorCodes.RESET} {ColorCodes.DIM}(Errors: {len(report['errors'])}){ColorCodes.RESET}"
     )
 
 def cmd_ask(args):
@@ -536,7 +428,7 @@ def cmd_ask(args):
     llm = AIService(cfg)
     with Spinner("Thinking"):
         answer = ask(cfg, llm, args.question, all_workspaces=args.all)
-    print(f"\n{ColorCodes.BOLD}✨{ColorCodes.RESET} {answer.text}\n")
+    print(f"\n{ColorCodes.GOLD_BRIGHT}✨{ColorCodes.RESET} {ColorCodes.TEXT_BRIGHT}{answer.text}{ColorCodes.RESET}\n")
     if answer.sources:
         print(f"{ColorCodes.DIM}Sources: {', '.join(answer.sources)}{ColorCodes.RESET}")
     if answer.fallback:
@@ -554,15 +446,15 @@ def cmd_chat(args):
     history: list[ConversationTurn] = []
 
     print(
-        f"{ColorCodes.BOLD}Chat mode{ColorCodes.RESET} "
+        f"{ColorCodes.GOLD}{ColorCodes.BOLD}Chat mode{ColorCodes.RESET} "
         f"{ColorCodes.DIM}— ask follow-ups in context. "
         f"Press ESC or Type 'exit' to leave.{ColorCodes.RESET}\n"
     )
-    print("✨ Welcome to Gray Box! How can I assist you today?\n")
+    print(f"{ColorCodes.GOLD_BRIGHT}✨ Welcome to Gray Box! How can I assist you today?{ColorCodes.RESET}\n")
     while True:
         try:
             q = _interactive_input(
-                f"{ColorCodes.BOLD}You{ColorCodes.RESET}: "
+                f"{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}You{ColorCodes.RESET}: "
             )
         except (EOFError, KeyboardInterrupt):
             break
@@ -577,7 +469,7 @@ def cmd_chat(args):
         with Spinner("Thinking"):
             answer = ask(cfg, llm, q, all_workspaces=args.all, history=history)
 
-        print(f"\n{ColorCodes.BOLD}✨{ColorCodes.RESET} {answer.text}\n")
+        print(f"\n{ColorCodes.GOLD_BRIGHT}✨{ColorCodes.RESET} {ColorCodes.TEXT_BRIGHT}{answer.text}{ColorCodes.RESET}\n")
         if answer.sources:
             print(f"{ColorCodes.DIM}Sources: {', '.join(answer.sources)}{ColorCodes.RESET}")
         if answer.fallback:
@@ -600,7 +492,7 @@ def cmd_search(args):
 
     if wiki_hits:
         print(
-            f"\n{ColorCodes.BOLD}Search results for '{args.query}':{ColorCodes.RESET}\n"
+            f"\n{ColorCodes.GOLD}{ColorCodes.BOLD}Search results for '{args.query}':{ColorCodes.RESET}\n"
         )
         for h in wiki_hits:
             prefix = f"[{h.workspace_id}] " if h.workspace_id else ""
@@ -612,7 +504,7 @@ def cmd_search(args):
 
     if inbox_hits:
         print(
-            f"\n{ColorCodes.BOLD}Search results for '{args.query}' (from raw captures):{ColorCodes.RESET}\n"
+            f"\n{ColorCodes.GOLD}{ColorCodes.BOLD}Search results for '{args.query}' (from raw captures):{ColorCodes.RESET}\n"
         )
         for h in inbox_hits:
             prefix = f"[{h.workspace_id}] " if h.workspace_id else ""
@@ -648,7 +540,7 @@ def cmd_pages(args):
         )
         print(f"{ColorCodes.CYAN}{p.ref:<28}{ColorCodes.RESET} {p.title}{status}")
     print(
-        f"\n{ColorCodes.BOLD}Total:{ColorCodes.RESET} {ColorCodes.CYAN}{len(pages)}{ColorCodes.RESET} {ColorCodes.DIM}page(s){ColorCodes.RESET}\n"
+        f"\n{ColorCodes.GOLD}{ColorCodes.BOLD}Total:{ColorCodes.RESET} {ColorCodes.CYAN}{len(pages)}{ColorCodes.RESET} {ColorCodes.DIM}page(s){ColorCodes.RESET}\n"
     )
 
 
@@ -664,7 +556,7 @@ def cmd_status(args):
     processed_count = len(inbox) - len(unprocessed)
     unprocessed_count = len(unprocessed)
 
-    print(f"\n{ColorCodes.BOLD}Workspace Status{ColorCodes.RESET}\n")
+    print(f"\n{ColorCodes.GOLD}{ColorCodes.BOLD}Workspace Status{ColorCodes.RESET}\n")
     print(f"  {ColorCodes.BLUE}Root:{ColorCodes.RESET}    {cfg.root}")
     print(
         f"  {ColorCodes.BLUE}Active:{ColorCodes.RESET}  {ws.name} {ColorCodes.DIM}({ws.id}){ColorCodes.RESET}"
@@ -672,7 +564,7 @@ def cmd_status(args):
     print(f"  {ColorCodes.BLUE}Path:{ColorCodes.RESET}    {cfg.workspace}")
     print(f"  {ColorCodes.BLUE}Workspace root:{ColorCodes.RESET} {ws.root}")
     print(
-        f"  {ColorCodes.GREEN}Inbox:{ColorCodes.RESET}   {ColorCodes.BOLD}{unprocessed_count} unorganized{ColorCodes.RESET}, {processed_count} organized "
+        f"  {ColorCodes.GOLD}Inbox:{ColorCodes.RESET}   {ColorCodes.BOLD}{ColorCodes.GOLD_BRIGHT}{unprocessed_count} unorganized{ColorCodes.RESET}, {processed_count} organized "
         f"{ColorCodes.DIM}({len(inbox)} total){ColorCodes.RESET}"
     )
     print(f"  {ColorCodes.CYAN}Pages:{ColorCodes.RESET}   {len(pages)} organized pages")
@@ -724,7 +616,7 @@ def cmd_dupes(args):
             f"{ColorCodes.DIM}No likely duplicates found (threshold {threshold}).{ColorCodes.RESET}"
         )
         return
-    print(f"\n{ColorCodes.BOLD}Possible duplicates:{ColorCodes.RESET}\n")
+    print(f"\n{ColorCodes.GOLD}{ColorCodes.BOLD}Possible duplicates:{ColorCodes.RESET}\n")
     for c in candidates:
         print(
             f"{ColorCodes.YELLOW}[{c.similarity:.2f}]{ColorCodes.RESET} "
@@ -837,7 +729,7 @@ def cmd_rebuild_index(args):
             errors += 1
             print(f"{ColorCodes.RED}✗ {p.ref}:{ColorCodes.RESET} {ColorCodes.DIM}{e}{ColorCodes.RESET}", file=sys.stderr)
     print(
-        f"{ColorCodes.BOLD}✨ Indexed:{ColorCodes.RESET} {ColorCodes.CYAN}{indexed}{ColorCodes.RESET} "
+        f"{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}✨ Indexed:{ColorCodes.RESET} {ColorCodes.CYAN}{indexed}{ColorCodes.RESET} "
         f"{ColorCodes.DIM}(Errors: {errors}, Total: {len(pages)}){ColorCodes.RESET}"
     )
 
@@ -869,7 +761,7 @@ def cmd_refresh(args):
             )
     verb = "Would refresh" if args.dry_run else "Refreshed"
     print(
-        f"\n{ColorCodes.BOLD}✨ {verb}: {ColorCodes.CYAN}{len(report['refreshed'])}{ColorCodes.RESET}{ColorCodes.BOLD} page(s){ColorCodes.RESET} "
+        f"\n{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}✨ {verb}: {ColorCodes.CYAN}{len(report['refreshed'])}{ColorCodes.RESET}{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD} page(s){ColorCodes.RESET} "
         f"{ColorCodes.DIM}(Skipped: {report['skipped']}, Errors: {len(report['errors'])}, Cost: ${report['total_cost']:.4f}){ColorCodes.RESET}"
     )
 
@@ -886,7 +778,7 @@ def cmd_workspace_list(args):
     cfg = load_config(args.config)
     ensure_workspace(cfg)
     current = cfg.workspace_manager.current().id
-    print(f"\n{ColorCodes.BOLD}Workspaces{ColorCodes.RESET}\n")
+    print(f"\n{ColorCodes.GOLD}{ColorCodes.BOLD}Workspaces{ColorCodes.RESET}\n")
     for ws in cfg.workspace_manager.list():
         marker = f"{ColorCodes.GREEN}●{ColorCodes.RESET}" if ws.id == current else " "
         desc = f" — {ws.description}" if ws.description else ""
@@ -925,20 +817,20 @@ def cmd_workspace_create(args):
         _clear_screen()
         _render_home_banner(cfg)
         name = _interactive_input(
-            f"{ColorCodes.BOLD}Workspace name {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
+            f"{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}Workspace name {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
         )
         if not name or not name.strip():
             print(f"{ColorCodes.DIM}Cancelled.{ColorCodes.RESET}")
             return
         description = (
             _interactive_input(
-                f"{ColorCodes.BOLD}Description {ColorCodes.DIM}(optional, Esc to skip){ColorCodes.RESET}: "
+                f"{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}Description {ColorCodes.DIM}(optional, Esc to skip){ColorCodes.RESET}: "
             )
             or ""
         )
         path = (
             _interactive_input(
-                f"{ColorCodes.BOLD}Workspace path {ColorCodes.DIM}(optional, Enter for default, Esc to skip){ColorCodes.RESET}: "
+                f"{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}Workspace path {ColorCodes.DIM}(optional, Enter for default, Esc to skip){ColorCodes.RESET}: "
             )
             or ""
         )
@@ -989,7 +881,7 @@ def _run_cli_command(cmd_name: str, config_path: str | None):
         cmd_status(args)
     elif cmd_name == "capture":
         print(
-            f"{ColorCodes.DIM}Press {ColorCodes.RESET}{ColorCodes.BOLD}F{ColorCodes.RESET}"
+            f"{ColorCodes.DIM}Press {ColorCodes.RESET}{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}F{ColorCodes.RESET}"
             f"{ColorCodes.DIM} to import a file, or any other key to type a note directly "
             f"(Esc to cancel){ColorCodes.RESET}"
         )
@@ -998,14 +890,14 @@ def _run_cli_command(cmd_name: str, config_path: str | None):
             return
         if isinstance(choice, str) and choice.lower() == "f":
             path = _interactive_input(
-                f"{ColorCodes.BOLD}File path {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
+                f"{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}File path {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
             )
             if path is not None and path.strip():
                 args.file = path.strip()
                 cmd_capture(args)
         else:
             text = _interactive_input(
-                f"{ColorCodes.BOLD}Note text {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
+                f"{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}Note text {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
             )
             if text is not None and text.strip():
                 args.text = text.strip()
@@ -1014,7 +906,7 @@ def _run_cli_command(cmd_name: str, config_path: str | None):
         cmd_organize(args)
     elif cmd_name == "ask":
         q = _interactive_input(
-            f"{ColorCodes.BOLD}Question {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
+            f"{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}Question {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
         )
         if q and q.strip():
             args.question = q.strip()
@@ -1023,7 +915,7 @@ def _run_cli_command(cmd_name: str, config_path: str | None):
         cmd_chat(args)
     elif cmd_name == "search":
         q = _interactive_input(
-            f"{ColorCodes.BOLD}Search query {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
+            f"{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}Search query {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
         )
         if q and q.strip():
             args.query = q.strip()
@@ -1038,62 +930,6 @@ def _run_cli_command(cmd_name: str, config_path: str | None):
         cmd_workspace_switch(args)
     elif cmd_name == "create-workspace":
         cmd_workspace_create(args)
-
-
-def interactive_main(config_path=None):
-    options = [
-        ("status", "Workspace summary", "📊"),
-        ("capture", "Capture a note or import a file", "📥"),
-        ("organize", "Process inbox items", "✨"),
-        ("ask", "Ask a single question", "🧠"),
-        ("chat", "Multi-turn Q&A with history", "💬"),
-        ("search", "Search knowledge base", "🔍"),
-        ("pages", "List all pages", "📄"),
-        ("dupes", "Find possible duplicate pages", "🧬"),
-        ("dashboard", "Generate HTML dashboard", "🌐"),
-        ("switch-workspace", "Switch workspace", "🔄"),
-        ("create-workspace", "Create workspace", "➕"),
-        ("exit", "Quit", "❌"),
-    ]
-    selected = 0
-    cfg = load_config(config_path)
-    _hide_cursor()
-    try:
-        _clear_screen()
-        _render_home_banner(cfg)
-        _render_menu(selected, options)
-        while True:
-            ch = _getch()
-            if ch in (Key.UP, "k"):
-                selected = (selected - 1) % len(options)
-            elif ch in (Key.DOWN, "j"):
-                selected = (selected + 1) % len(options)
-            elif ch == Key.ENTER:
-                cmd_name = options[selected][0]
-                if cmd_name == "exit":
-                    return
-                _clear_screen()
-                try:
-                    _run_cli_command(cmd_name, config_path)
-                except (EOFError, KeyboardInterrupt):
-                    print(f"\n{ColorCodes.YELLOW}Cancelled.{ColorCodes.RESET}")
-                except Exception as e:
-                    print(f"\n{ColorCodes.RED}Error: {e}{ColorCodes.RESET}")
-                _pause()
-                cfg = load_config(config_path)
-                _clear_screen()
-                _render_home_banner(cfg)
-                _render_menu(selected, options)
-                continue
-            elif ch in (Key.ESC, "q"):
-                return
-            else:
-                continue
-
-            _move_cursor_up(len(options))
-            _render_menu(selected, options)
-    finally:
-        _show_cursor()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1305,7 +1141,7 @@ def main(argv: list[str] | None = None) -> None:
         argv is not None and len(argv) == 0
     )
     if is_empty and sys.stdin.isatty():
-        interactive_main()
+        interactive_main(run_command=_run_cli_command)
         return
     args = parser.parse_args(argv)
     args.func(args)

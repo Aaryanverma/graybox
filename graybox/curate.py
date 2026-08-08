@@ -110,7 +110,8 @@ def merge_pages(cfg: Config, primary_ref: str, secondary_ref: str, dry_run: bool
         cfg, old_ref=secondary.ref, new_ref=merged.ref, exclude_refs={merged.ref}
     )
     _maybe_record(cfg, merged, f"wiki: merge {secondary_ref} into {primary_ref}")
-    ensure_indexed(cfg, merged, AIService(cfg))
+    if cfg.embeddings.enabled:
+        ensure_indexed(cfg, merged, AIService(cfg))
     # Drop old secondary from embedding index
     idx = _get_index(cfg)
     if idx:

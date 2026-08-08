@@ -20,6 +20,7 @@ PAGE_TYPES = (
     "task",
     "decision",
     "action",
+    "event",
     "journal",
 )
 
@@ -34,6 +35,7 @@ TYPE_DIR = {
     "task": "tasks",
     "decision": "decisions",
     "action": "actions",
+    "event": "events",
     "journal": "journal",
 }
 

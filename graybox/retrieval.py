@@ -435,23 +435,26 @@ def _prepare_search_query(
         return question
     return text["response"].strip()
 
+def _dedupe_by_ref(hits: list[Hit]) -> list[Hit]:
+    seen, out = set(), []
+    for h in hits:
+        key = (getattr(h, "workspace_id", None), h.doc.search_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(h)
+    return out
 
-def ask(
-    cfg: Config,
-    llm: AIService,
-    question: str,
-    all_workspaces: bool = False,
-    history: list[ConversationTurn] | None = None,
-) -> Answer:
+def ask(cfg, llm, question, all_workspaces=False, history=None) -> Answer:
     history = history or []
     history_block = _build_history_block(history, llm)
-
     search_query = _prepare_search_query(llm, question, history, history_block)
 
     wiki_hits, inbox_hits = search_all(
         cfg, search_query, top_k=cfg.retrieval.top_k, all_workspaces=all_workspaces
     )
 
+    # ---- semantic enrichment ----
     if getattr(cfg.embeddings, "enabled", False):
         try:
             emb_result = llm.embedding_call(search_query)
@@ -462,108 +465,87 @@ def ask(
                         top_k=cfg.retrieval.top_k, min_score=cfg.retrieval.min_score,
                     )
                     if semantic_hits:
-                        wiki_hits = wiki_hits + semantic_hits
-                        wiki_hits.sort(key=lambda h: h.score, reverse=True)
-
-                        seen: set[tuple[str, str]] = set()
-                        deduped: list[Hit] = []
-                        for h in wiki_hits:
-                            key = (h.workspace_id, h.doc.search_id)
-                            if key in seen:
-                                continue
-                            seen.add(key)
-                            deduped.append(h)
-                        wiki_hits = deduped
+                        wiki_hits = _dedupe_by_ref(wiki_hits + semantic_hits)
                 else:
                     semantic_refs = search_embeddings(
-                        cfg,
-                        emb_result["embedding"],
-                        top_k=cfg.retrieval.top_k,
-                        min_score=cfg.retrieval.min_score,
+                        cfg, emb_result["embedding"],
+                        top_k=cfg.retrieval.top_k, min_score=cfg.retrieval.min_score,
                     )
                     if semantic_refs:
                         wiki_hits = _blend_hits(wiki_hits, semantic_refs, cfg)
-            elif emb_result is None:
-                logger.warning("Embedding call returned no result — check embeddings.model_name in config.yaml")
         except Exception as e:
             logger.warning("Semantic search failed (%s), falling back to keyword-only", e)
 
-    if wiki_hits and not all_workspaces:
-        primary_hits = [h for h in wiki_hits if h.score >= cfg.retrieval.min_score]
-
-        wiki_hits = _expand_graph(
-            cfg,
-            primary_hits,
+    strong_wiki = [h for h in wiki_hits if h.score >= cfg.retrieval.min_score]
+    if strong_wiki and not all_workspaces:
+        expanded = _expand_graph(
+            cfg, strong_wiki,
             max_hops=getattr(cfg.retrieval, "graph_max_hops", 1),
             max_nodes=getattr(cfg.retrieval, "graph_max_nodes", cfg.retrieval.top_k * 3),
-            max_neighbors_per_node=getattr(
-                cfg.retrieval, "graph_max_neighbors_per_node", 5
-            ),
+            max_neighbors_per_node=getattr(cfg.retrieval, "graph_max_neighbors_per_node", 5),
             decay=getattr(cfg.retrieval, "graph_decay", 0.65),
             graph_min_score=getattr(cfg.retrieval, "graph_min_score_ratio", 0.5) * cfg.retrieval.min_score,
         )
+        wiki_hits = _dedupe_by_ref(expanded)
+    else:
+        wiki_hits = _dedupe_by_ref(wiki_hits)   # keep sub-threshold hits as fallback
 
-        seen = set()
-        deduped = []
-        for h in wiki_hits:
-            ref = h.doc.search_id
-            if ref in seen:
-                continue
-            seen.add(ref)
-            deduped.append(h)
+    inbox_threshold = getattr(cfg.retrieval, "inbox_min_score",
+                              cfg.retrieval.min_score * 0.5)
+    strong_inbox = [h for h in inbox_hits if h.score >= inbox_threshold]
 
-        wiki_hits = deduped
+    # ---- Path A: strong wiki hits -> normal grounded answer ----
+    if strong_wiki:
+        context = _build_context(wiki_hits, all_workspaces=all_workspaces)
+        max_tokens = cfg.llm.max_tokens or cfg.llm.max_completion_tokens or 8196
+        context = compress_context(context, llm, max_tokens=max_tokens,
+                                   prompt=RETRIEVAL_COMPRESSION_PROMPT)
+        prompt = (CHAT_RETRIEVAL_PROMPT_TMPL if history_block else RETRIEVAL_PROMPT_TMPL).format(
+            history=history_block, context=context, question=question)
+        text = llm.llm_call(system_prompt=_system_prompt(cfg), prompt=prompt)
+        if text.get("response"):
+            return Answer(text=text["response"].strip(),
+                          sources=[_source_tag(h, all_workspaces) for h in wiki_hits],
+                          grounded=True, fallback=False)
 
-    history_block = _build_history_block(history, llm)
+    # ---- Path B: no strong wiki, but inbox has the raw note -> warn + answer ----
+    if strong_inbox:
+        context = _build_context(strong_inbox, all_workspaces=all_workspaces)
+        max_tokens = cfg.llm.max_tokens or cfg.llm.max_completion_tokens or 8196
+        context = compress_context(context, llm, max_tokens=max_tokens,
+                                   prompt=RETRIEVAL_COMPRESSION_PROMPT)
 
+        warning = ("⚠️  These results come from raw, un-organized inbox captures — "
+                   "the structured knowledge base has no page for this query yet. "
+                   "Run the organizer to promote these notes into the wiki.\n\n")
+
+        prompt = (CHAT_RETRIEVAL_PROMPT_TMPL if history_block else RETRIEVAL_PROMPT_TMPL).format(
+            history=history_block, context=context, question=question)
+        text = llm.llm_call(system_prompt=_system_prompt(cfg), prompt=prompt)
+        if text and text.get("response"):
+            return Answer(
+                text=warning + text["response"].strip(),
+                sources=[_source_tag(h, all_workspaces) for h in strong_inbox],
+                grounded=True, fallback=True,
+            )
+    if not strong_inbox and inbox_hits:
+        # Last-ditch: take whatever inbox gave us, even below threshold.
+        strong_inbox = inbox_hits[:3]
+
+    # ---- Path C: weak wiki hits exist -> still try, but warn ----
     if wiki_hits:
         context = _build_context(wiki_hits, all_workspaces=all_workspaces)
-
         max_tokens = cfg.llm.max_tokens or cfg.llm.max_completion_tokens or 8196
-        context = compress_context(
-            context, llm, max_tokens=max_tokens, prompt=RETRIEVAL_COMPRESSION_PROMPT
-        )
-
-        if history_block:
-            prompt = CHAT_RETRIEVAL_PROMPT_TMPL.format(
-                history=history_block, context=context, question=question
-            )
-        else:
-            prompt = RETRIEVAL_PROMPT_TMPL.format(context=context, question=question)
-
+        context = compress_context(context, llm, max_tokens=max_tokens,
+                                   prompt=RETRIEVAL_COMPRESSION_PROMPT)
+        warning = ("⚠️  No high-confidence matches were found. The following is based "
+                   "on loosely related pages and may be incomplete.\n\n")
+        prompt = (CHAT_RETRIEVAL_PROMPT_TMPL if history_block else RETRIEVAL_PROMPT_TMPL).format(
+            history=history_block, context=context, question=question)
         text = llm.llm_call(system_prompt=_system_prompt(cfg), prompt=prompt)
-        if text["response"] is not None:
-            return Answer(
-                text=text["response"].strip(),
-                sources=[_source_tag(h, all_workspaces) for h in wiki_hits],
-                grounded=True,
-                fallback=False,
-            )
-
-    if inbox_hits:
-        context = _build_context(inbox_hits, all_workspaces=all_workspaces)
-
-        max_tokens = cfg.llm.max_tokens or cfg.llm.max_completion_tokens or 8196
-        context = compress_context(
-            context, llm, max_tokens=max_tokens, prompt=RETRIEVAL_COMPRESSION_PROMPT
-        )
-
-        if history_block:
-            prompt = CHAT_RETRIEVAL_PROMPT_TMPL.format(
-                history=history_block, context=context, question=question
-            )
-        else:
-            prompt = RETRIEVAL_PROMPT_TMPL.format(context=context, question=question)
-
-        text = llm.llm_call(system_prompt=_system_prompt(cfg), prompt=prompt)
-        if not text or not text.get("response"):
-            return Answer(text=NO_EVIDENCE_MSG, sources=[], grounded=False, fallback=False)
-
-        return Answer(
-            text=text["response"].strip(),
-            sources=[_source_tag(h, all_workspaces) for h in inbox_hits],
-            grounded=True,
-            fallback=True,
-        )
+        if text and text.get("response"):
+            return Answer(text=warning + text["response"].strip(),
+                          sources=[_source_tag(h, all_workspaces) for h in wiki_hits],
+                          grounded=True, fallback=True)
 
     return Answer(text=NO_EVIDENCE_MSG, sources=[], grounded=False, fallback=False)
