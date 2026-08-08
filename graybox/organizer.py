@@ -150,7 +150,7 @@ def _gather_existing_context(cfg: Config, item_content: str, top_k: int = 10) ->
     LLM to reconcile against, not a final grounded answer - false
     positives here just mean an extra reference line, not a wrong claim.
     """
-    wiki_hits, _ = search_all(cfg, item_content, top_k=top_k, min_score=0.3)
+    wiki_hits, _ = search_all(cfg, item_content, top_k=top_k, wiki_min_score=0.3)
     return _format_existing_context(wiki_hits)
 
 def process_item(cfg: Config, llm: AIService, item_id: str, item_content: str,
@@ -259,6 +259,31 @@ def process_item(cfg: Config, llm: AIService, item_id: str, item_content: str,
             _backlink(owner_page, page.ref)
             touch(owner_page)
 
+    for act in data.get("actions", []):
+        title = act.get("title", "").strip()
+        if not title:
+            continue
+        page, new = _get_or_create_page(cfg, "action", title, [], "")
+        page.status = (act.get("status", "open") or "open").replace("_", "-").strip()
+        owner = act.get("owner", "")
+        due = act.get("due", "")
+        if owner:
+            page.owner = owner
+        if due:
+            page.due = due
+        detail = f"Action: {title}"
+        if owner:
+            detail += f" (owner: {owner})"
+        if due:
+            detail += f" (due: {due})"
+        _append_note(page, detail, item_id, raw=item_content)
+        touch(page, new)
+        if owner and owner.lower() in name_to_page:
+            owner_page = name_to_page[owner.lower()]
+            _link(page, owner_page.ref)
+            _backlink(owner_page, page.ref)
+            touch(owner_page)
+
     for dec in data.get("decisions", []):
         title = dec.get("title", "").strip()
         if not title:
@@ -307,6 +332,23 @@ def process_item(cfg: Config, llm: AIService, item_id: str, item_content: str,
                 continue
             _link(meeting_page, other.ref)
             _backlink(other, meeting_page.ref)
+
+    for evt in data.get("events", []):
+        title = evt.get("title", "").strip()
+        if not title:
+            continue
+        page, new = _get_or_create_page(cfg, "event", title, [], "")
+        if evt.get("date"):
+            page.date = evt["date"]
+        
+        description = evt.get("description", "") or f"Event: {title}"
+        location = evt.get("location", "")
+        detail = description
+        if location:
+            detail += f" (location: {location})"
+            
+        _append_note(page, detail, item_id, raw=item_content)
+        touch(page, new)
 
     if dry_run:
         return [f"{ref} ({'new' if is_new.get(ref) else 'updated'})" for ref in touched]

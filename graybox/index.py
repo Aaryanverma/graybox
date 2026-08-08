@@ -56,9 +56,9 @@ def _load_manifest(cfg: Config) -> dict:
     return _MANIFEST[key]
 
 
-def _save_manifest(cfg: Config) -> None:
-    p = _manifest_path(cfg)
-    p.write_text(json.dumps(_MANIFEST.get(_cache_key(cfg), {}), indent=2), encoding="utf-8")
+# def _save_manifest(cfg: Config) -> None:
+#     p = _manifest_path(cfg)
+#     p.write_text(json.dumps(_MANIFEST.get(_cache_key(cfg), {}), indent=2), encoding="utf-8")
 
 
 def _page_cache(cfg: Config) -> dict[str, tuple[float, Page]]:

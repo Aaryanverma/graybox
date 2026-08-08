@@ -29,7 +29,7 @@ class TestSearchAll:
             id="x", type="topic", title="Something Else Entirely",
             created=now_iso(), updated=now_iso(), summary="Nothing related",
         ))
-        wiki_hits, _ = search_all(temp_cfg, "completely unrelated query terms", top_k=5, min_score=0.4)
+        wiki_hits, _ = search_all(temp_cfg, "completely unrelated query terms", top_k=5, wiki_min_score=0.4)
         assert wiki_hits == []
 
     def test_top_k_limits_results(self, temp_cfg):

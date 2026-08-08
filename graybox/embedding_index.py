@@ -153,7 +153,7 @@ def _get_index(cfg: Config) -> Optional[EmbeddingIndex]:
     return _EMBEDDING_CACHE[key]
 
 
-def ensure_indexed(cfg: Config, page: Page, llm) -> bool:
+def ensure_indexed(cfg: Config, page: Page, embed_model) -> bool:
     """Index a page if embeddings are enabled and it needs reindexing.
     Returns True if indexed successfully.
     """
@@ -164,7 +164,7 @@ def ensure_indexed(cfg: Config, page: Page, llm) -> bool:
         return True
     try:
         blob = idx._search_blob(page)
-        result = llm.embedding_call(blob)
+        result = embed_model.embedding_call(blob)
         if result and result.get("embedding"):
             idx.index_page(page, result["embedding"])
             return True

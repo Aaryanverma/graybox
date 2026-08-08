@@ -44,7 +44,7 @@ def compress_context(
     if not model_context_window:
         model_context_window = _FALLBACK_MODEL_CONTEXT_WINDOW
 
-    available_context = model_context_window - max_tokens - 1000  # safety buffer
+    available_context = min(max_tokens, model_context_window // 2)
     if estimate_tokens(context) <= available_context:
         return context
 
