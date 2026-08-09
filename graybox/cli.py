@@ -781,6 +781,63 @@ def cmd_refresh(args):
         f"{ColorCodes.DIM}(Skipped: {report['skipped']}, Errors: {len(report['errors'])}, Cost: ${report['total_cost']:.4f}){ColorCodes.RESET}"
     )
 
+def cmd_migrate_vault(args):
+    from graybox.ai import AIService
+
+    cfg = load_config(args.config)
+    ensure_workspace(cfg)
+    llm = AIService(cfg)
+    if args.dry_run:
+        print(
+            f"{ColorCodes.YELLOW}⚠️  [Dry-Run] No files will be written to disk.{ColorCodes.RESET}\n"
+        )
+    try:
+        with Spinner("Migrating Obsidian vault"):
+            from graybox.migrate_obsidian import migrate_vault
+
+            report = migrate_vault(cfg, llm, args.vault_path, dry_run=args.dry_run)
+    except ValueError as e:
+        print(f"{ColorCodes.RED}✗ {e}{ColorCodes.RESET}", file=sys.stderr)
+        return
+
+    for m in report.created:
+        print(
+            f"{ColorCodes.GREEN}✓ created{ColorCodes.RESET} {ColorCodes.DIM}→{ColorCodes.RESET} "
+            f"{ColorCodes.CYAN}{m.ref}{ColorCodes.RESET} {ColorCodes.DIM}({m.title}){ColorCodes.RESET}"
+        )
+    for m in report.merged:
+        print(
+            f"{ColorCodes.YELLOW}↷ merged{ColorCodes.RESET}  {ColorCodes.DIM}→{ColorCodes.RESET} "
+            f"{ColorCodes.CYAN}{m.ref}{ColorCodes.RESET} {ColorCodes.DIM}({m.title}){ColorCodes.RESET}"
+        )
+    for m in report.skipped:
+        print(
+            f"{ColorCodes.RED}✗ skipped{ColorCodes.RESET} {ColorCodes.DIM}{m.title}: {m.reason}{ColorCodes.RESET}",
+            file=sys.stderr,
+        )
+    for e in report.errors:
+        print(
+            f"{ColorCodes.RED}✗ Error on {e['note']}:{ColorCodes.RESET} {ColorCodes.DIM}{e['error']}{ColorCodes.RESET}",
+            file=sys.stderr,
+        )
+
+    verb = "Would migrate" if args.dry_run else "Migrated"
+    converted = len(report.created) + len(report.merged)
+    print(
+        f"\n{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}✨ {verb}: {ColorCodes.CYAN}{converted}{ColorCodes.RESET}"
+        f"{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD} / {report.total_notes} notes{ColorCodes.RESET} "
+        f"{ColorCodes.DIM}(Created: {len(report.created)}, Merged: {len(report.merged)}, "
+        f"Skipped: {len(report.skipped)}, Errors: {len(report.errors)}){ColorCodes.RESET}"
+    )
+    if not args.dry_run and converted and getattr(cfg.embeddings, "enabled", False):
+        print(
+            f"{ColorCodes.YELLOW}⚠️  Embeddings are enabled but weren't indexed during migration.{ColorCodes.RESET}"
+        )
+        print(
+            f"{ColorCodes.YELLOW}   Run 'graybox rebuild-index' to index the migrated pages.{ColorCodes.RESET}"
+        )
+
+
 def cmd_dashboard(args):
     cfg = load_config(args.config)
     ensure_workspace(cfg)
@@ -889,6 +946,7 @@ def _run_cli_command(cmd_name: str, config_path: str | None):
         status=None,
         alias=None,
         path=None,
+        vault_path=None,
     )
     print(
         f"{ColorCodes.BLUE}◆ Gray Box{ColorCodes.RESET} {ColorCodes.DIM}› {cmd_name}{ColorCodes.RESET}\n"
@@ -942,6 +1000,23 @@ def _run_cli_command(cmd_name: str, config_path: str | None):
         cmd_dupes(args)
     elif cmd_name == "dashboard":
         cmd_dashboard(args)
+    elif cmd_name == "migrate-vault":
+        path = _interactive_input(
+            f"{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}Obsidian vault path {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
+        )
+        if path is not None and path.strip():
+            print(
+                f"{ColorCodes.YELLOW}⚠️  This is a one-time import, not a sync. Re-running against a "
+                f"vault you've already migrated may create duplicate or unexpectedly merged pages.{ColorCodes.RESET}"
+            )
+            confirm = _interactive_input(
+                f"{ColorCodes.GOLD_BRIGHT}{ColorCodes.BOLD}Proceed? (y/N){ColorCodes.RESET}: "
+            )
+            if confirm is not None and confirm.strip().lower() == "y":
+                args.vault_path = path.strip()
+                cmd_migrate_vault(args)
+            else:
+                print(f"{ColorCodes.DIM}Cancelled.{ColorCodes.RESET}")
     elif cmd_name == "switch-workspace":
         cmd_workspace_switch(args)
     elif cmd_name == "create-workspace":
@@ -1028,6 +1103,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_dashboard = sub.add_parser("dashboard", help="Generate a static HTML dashboard.")
     p_dashboard.set_defaults(func=cmd_dashboard)
+
+    p_migrate = sub.add_parser(
+        "migrate-vault",
+        help="One-time import of an existing Obsidian vault into the current workspace's wiki. Not a sync.",
+    )
+    p_migrate.add_argument("vault_path", help="Path to the Obsidian vault root directory.")
+    p_migrate.add_argument(
+        "--dry-run", action="store_true", help="Show what would be created/merged, write nothing."
+    )
+    p_migrate.set_defaults(func=cmd_migrate_vault)
 
     p_pages = sub.add_parser("pages", help="List wiki pages.")
     p_pages.add_argument(
