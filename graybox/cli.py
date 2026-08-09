@@ -309,9 +309,9 @@ def _render_home_banner(cfg) -> None:
     print(f"{ColorCodes.GREY}╰─────────────────────────────────────────────────────╯{ColorCodes.RESET}\n")
 
 
-def _interactive_input(prompt: str) -> str | None:
-    print(prompt, end="", flush=True)
-    buf: list[str] = []
+def _read_raw_line(buf: list[str]) -> str | None:
+    """Read the rest of a line into `buf`, echoing printable chars. Returns
+    the joined text (Esc/None on cancel)."""
     while True:
         ch = _getch()
         if ch == Key.ESC:
@@ -334,11 +334,39 @@ def _interactive_input(prompt: str) -> str | None:
             sys.stdout.flush()
 
 
+def _interactive_input(prompt: str) -> str | None:
+    print(prompt, end="", flush=True)
+    return _read_raw_line([])
+
+
 def _capture_note_interactive(cfg) -> InboxItem | None:
-    """Straight to the note prompt — no "Press F to import" wait."""
-    text = _interactive_input(
-        f"{ColorCodes.BOLD}Note text {ColorCodes.DIM}(Esc to cancel){ColorCodes.RESET}: "
+    """Straight to the note prompt. A leading `F` (Shift+F) imports a file by
+    path instead — the `capture --file` equivalent the old TUI offered.
+    Lowercase `f` types normally, so notes starting with "f" work."""
+    print(
+        f"{ColorCodes.BOLD}Note text {ColorCodes.DIM}(Esc to cancel, "
+        f"F to import a file){ColorCodes.RESET}: ",
+        end="",
+        flush=True,
     )
+    first = _getch()
+    if first == Key.ESC:
+        print()
+        return None
+    if first == Key.CTRL_C:
+        raise KeyboardInterrupt
+    if isinstance(first, str) and first == "F":
+        print()
+        return _import_file_interactive(cfg)
+    if first == Key.ENTER:
+        print()
+        return None
+    buf: list[str] = []
+    if isinstance(first, str) and len(first) == 1 and first.isprintable():
+        buf.append(first)
+        sys.stdout.write(first)
+        sys.stdout.flush()
+    text = _read_raw_line(buf)
     if text is None or not text.strip():
         return None
     item = capture(cfg, text.strip())
@@ -952,10 +980,6 @@ def _run_cli_command(
         if not last_item_id:
             return None
         item = _append_note_interactive(cfg, last_item_id)
-        return item.id if item else None
-    elif cmd_name == "import":
-        cfg = load_config(config_path)
-        item = _import_file_interactive(cfg)
         return item.id if item else None
     elif cmd_name == "organize":
         cmd_organize(args)

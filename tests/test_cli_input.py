@@ -122,6 +122,238 @@ class TestInteractiveCaptureFlow:
         assert item.content == "água para as plantas"
 
     @pytest.mark.skipif(sys.platform == "win32", reason="requires termios/pty")
+    def test_capture_note_starting_with_lowercase_f(self, temp_cfg):
+        """Only uppercase F (Shift+F) triggers file import; a note beginning
+        with lowercase "f" must be captured as a normal note."""
+        from graybox.cli import _capture_note_interactive
+
+        master, slave = pty.openpty()
+        collected: list[bytes] = []
+        stop = threading.Event()
+
+        def drain() -> None:
+            while not stop.is_set():
+                try:
+                    r, _, _ = select.select([master], [], [], 0.05)
+                except (OSError, ValueError):
+                    return
+                if not r:
+                    continue
+                try:
+                    d = os.read(master, 4096)
+                except (OSError, ValueError):
+                    return
+                if not d:
+                    return
+                collected.append(d)
+
+        drainer = threading.Thread(target=drain, daemon=True)
+        drainer.start()
+
+        def typer() -> None:
+            deadline = time.time() + 10
+            while time.time() < deadline and b"Note text" not in b"".join(collected):
+                time.sleep(0.05)
+            os.write(master, b"fazer compras hoje")
+            time.sleep(0.2)
+            os.write(master, b"\r")
+
+        typer_thread = threading.Thread(target=typer, daemon=True)
+        typer_thread.start()
+
+        holder: dict = {}
+
+        def run_capture() -> None:
+            import sys as _sys
+
+            stdin_wrapper = os.fdopen(os.dup(slave), "rb", buffering=0)
+            stdout_wrapper = os.fdopen(os.dup(slave), "w", buffering=1)
+            saved_in, saved_out = _sys.stdin, _sys.stdout
+            _sys.stdin, _sys.stdout = stdin_wrapper, stdout_wrapper
+            try:
+                holder["item"] = _capture_note_interactive(temp_cfg)
+            except Exception as exc:  # pragma: no cover
+                holder["error"] = f"{type(exc).__name__}: {exc}"
+            finally:
+                _sys.stdin, _sys.stdout = saved_in, saved_out
+                stdin_wrapper.close()
+                stdout_wrapper.close()
+
+        input_thread = threading.Thread(target=run_capture)
+        input_thread.start()
+        input_thread.join(15)
+        stop.set()
+
+        try:
+            os.close(master)
+        finally:
+            os.close(slave)
+
+        assert not input_thread.is_alive(), "interactive capture hung"
+        assert "error" not in holder, holder.get("error")
+        assert b"File path" not in b"".join(collected), "lowercase f must not open import"
+        item = holder["item"]
+        assert item is not None
+        assert item.content == "fazer compras hoje"
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="requires termios/pty")
+    def test_capture_f_imports_file(self, temp_cfg, tmp_path):
+        from graybox.cli import _capture_note_interactive
+        from graybox.storage import read_inbox_item
+
+        source = tmp_path / "meeting-notes.txt"
+        source.write_text("pauta: adiar o projeto", encoding="utf-8")
+
+        master, slave = pty.openpty()
+        collected: list[bytes] = []
+        stop = threading.Event()
+
+        def drain() -> None:
+            while not stop.is_set():
+                try:
+                    r, _, _ = select.select([master], [], [], 0.05)
+                except (OSError, ValueError):
+                    return
+                if not r:
+                    continue
+                try:
+                    d = os.read(master, 4096)
+                except (OSError, ValueError):
+                    return
+                if not d:
+                    return
+                collected.append(d)
+
+        drainer = threading.Thread(target=drain, daemon=True)
+        drainer.start()
+
+        def typer() -> None:
+            deadline = time.time() + 10
+            while time.time() < deadline and b"Note text" not in b"".join(collected):
+                time.sleep(0.05)
+            os.write(master, b"F")
+            deadline = time.time() + 10
+            while time.time() < deadline and b"File path" not in b"".join(collected):
+                time.sleep(0.05)
+            os.write(master, str(source).encode("utf-8"))
+            time.sleep(0.2)
+            os.write(master, b"\r")
+
+        typer_thread = threading.Thread(target=typer, daemon=True)
+        typer_thread.start()
+
+        holder: dict = {}
+
+        def run_capture() -> None:
+            import sys as _sys
+
+            stdin_wrapper = os.fdopen(os.dup(slave), "rb", buffering=0)
+            stdout_wrapper = os.fdopen(os.dup(slave), "w", buffering=1)
+            saved_in, saved_out = _sys.stdin, _sys.stdout
+            _sys.stdin, _sys.stdout = stdin_wrapper, stdout_wrapper
+            try:
+                holder["item"] = _capture_note_interactive(temp_cfg)
+            except Exception as exc:  # pragma: no cover
+                holder["error"] = f"{type(exc).__name__}: {exc}"
+            finally:
+                _sys.stdin, _sys.stdout = saved_in, saved_out
+                stdin_wrapper.close()
+                stdout_wrapper.close()
+
+        input_thread = threading.Thread(target=run_capture)
+        input_thread.start()
+        input_thread.join(15)
+        stop.set()
+
+        try:
+            os.close(master)
+        finally:
+            os.close(slave)
+
+        assert not input_thread.is_alive(), "interactive file import hung"
+        assert "error" not in holder, holder.get("error")
+        item = holder["item"]
+        assert item is not None
+        assert "(imported from file:" in item.content
+        assert "pauta: adiar o projeto" in item.content
+        on_disk = read_inbox_item(temp_cfg, item.id)
+        assert on_disk is not None
+        assert "pauta: adiar o projeto" in on_disk.content
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="requires termios/pty")
+    def test_capture_f_cancels_import(self, temp_cfg):
+        from graybox.cli import _capture_note_interactive
+
+        master, slave = pty.openpty()
+        collected: list[bytes] = []
+        stop = threading.Event()
+
+        def drain() -> None:
+            while not stop.is_set():
+                try:
+                    r, _, _ = select.select([master], [], [], 0.05)
+                except (OSError, ValueError):
+                    return
+                if not r:
+                    continue
+                try:
+                    d = os.read(master, 4096)
+                except (OSError, ValueError):
+                    return
+                if not d:
+                    return
+                collected.append(d)
+
+        drainer = threading.Thread(target=drain, daemon=True)
+        drainer.start()
+
+        def typer() -> None:
+            deadline = time.time() + 10
+            while time.time() < deadline and b"Note text" not in b"".join(collected):
+                time.sleep(0.05)
+            os.write(master, b"F")
+            time.sleep(0.1)
+            os.write(master, b"\x1b")
+
+        typer_thread = threading.Thread(target=typer, daemon=True)
+        typer_thread.start()
+
+        holder: dict = {}
+
+        def run_capture() -> None:
+            import sys as _sys
+
+            stdin_wrapper = os.fdopen(os.dup(slave), "rb", buffering=0)
+            stdout_wrapper = os.fdopen(os.dup(slave), "w", buffering=1)
+            saved_in, saved_out = _sys.stdin, _sys.stdout
+            _sys.stdin, _sys.stdout = stdin_wrapper, stdout_wrapper
+            try:
+                holder["item"] = _capture_note_interactive(temp_cfg)
+            except Exception as exc:  # pragma: no cover
+                holder["error"] = f"{type(exc).__name__}: {exc}"
+            finally:
+                _sys.stdin, _sys.stdout = saved_in, saved_out
+                stdin_wrapper.close()
+                stdout_wrapper.close()
+
+        input_thread = threading.Thread(target=run_capture)
+        input_thread.start()
+        input_thread.join(15)
+        stop.set()
+
+        try:
+            os.close(master)
+        finally:
+            os.close(slave)
+
+        assert not input_thread.is_alive(), "interactive import cancel hung"
+        assert "error" not in holder, holder.get("error")
+        assert holder["item"] is None
+        from graybox.storage import list_inbox_items
+
+        assert list_inbox_items(temp_cfg) == []
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="requires termios/pty")
     def test_append_extends_last_note(self, temp_cfg):
         from graybox.cli import _append_note_interactive
         from graybox.capture import capture
