@@ -31,6 +31,25 @@ def _fake_chat_response(text: str):
     return SimpleNamespace(choices=[choice])
 
 
+class TestLocalModelCostMap:
+    """Regression: litellm's import fetches its model-cost map over the
+    network, which hangs ~20s on broken-IPv6 networks. Setting
+    LITELLM_LOCAL_MODEL_COST_MAP before the import skips the fetch entirely
+    and uses litellm's bundled local map — fast for everyone."""
+
+    def test_env_var_set_before_litellm_import(self):
+        import inspect
+
+        import graybox.ai.ai_service as ai_service
+
+        src = inspect.getsource(ai_service)
+        setdefault = 'os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "true")'
+        litellm_import = "from litellm import ("
+        assert setdefault in src and litellm_import in src
+        assert src.index(setdefault) < src.index(litellm_import)
+
+
+
 class TestGetLlmParams:
     def test_builds_expected_params(self, cfg):
         svc = AIService(cfg)
