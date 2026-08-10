@@ -188,7 +188,9 @@ def _health_score(*, total_pages: int, connected_pages: int, stale: int,
     return {"score": score, "label": label, "tone": tone}
 
 
-def build_dashboard_data(cfg: Config) -> dict:
+def build_dashboard_data(cfg: Config, light: bool = False) -> dict:
+    """Build the full dashboard dataset.
+    """
     today = date.today()
     generated_at = now_iso()
     pages = list_pages(cfg)
@@ -200,7 +202,7 @@ def build_dashboard_data(cfg: Config) -> dict:
     for p in pages:
         updated_dt = _safe_dt(p.updated) or _safe_dt(p.created) or datetime.min
         raw = ""
-        if getattr(p, "path", ""):
+        if not light and getattr(p, "path", ""):
             try:
                 raw = Path(p.path).read_text(encoding="utf-8")
             except OSError:
