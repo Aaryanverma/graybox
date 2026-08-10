@@ -455,6 +455,8 @@ Longevity and inspectability. A `.md` file with YAML frontmatter opens in litera
 
 ## Roadmap
 
+- [ ] Quick Capture
+- [ ] Migrating external vaults
 - [ ] Decision Intelligence & Memory Timeline
 - [ ] Meeting summarization
 - [ ] Automatic daily journal digest
