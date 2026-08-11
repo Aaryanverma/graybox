@@ -60,6 +60,7 @@ class InboxItem:
     created: str
     content: str
     path: str = ""      # populated on load
+    extra: dict[str, Any] = field(default_factory=dict)  # e.g. {"source_app": "Slack"}
 
 
 @dataclass
