@@ -1,16 +1,64 @@
 """Tests for storage.py — markdown round-trip, frontmatter, note splitting, rewiring."""
 from __future__ import annotations
 
+import pytest
+
+from graybox.capture import capture
 from graybox.models import Page, now_iso
 from graybox.storage import (
+    append_inbox_item,
     write_page,
     read_page,
+    read_inbox_item,
     list_pages,
     rewire_references,
     page_path,
     _split_notes,
     _replace_wiki_link,
+    _parse_frontmatter,
 )
+
+
+class TestAppendInboxItem:
+    def test_append_creates_new_item_linked_to_original(self, temp_cfg):
+        item = capture(temp_cfg, "first thought")
+        follow_up = append_inbox_item(temp_cfg, item.id, "second thought")
+
+        assert follow_up.id != item.id
+
+        original = read_inbox_item(temp_cfg, item.id)
+        assert original is not None
+        assert original.content == "first thought"
+        assert "second thought" not in original.content
+
+        loaded = read_inbox_item(temp_cfg, follow_up.id)
+        assert loaded is not None
+        assert loaded.content == "second thought"
+
+    def test_append_stores_previous_id_link_in_frontmatter(self, temp_cfg):
+        item = capture(temp_cfg, "hello")
+        follow_up = append_inbox_item(temp_cfg, item.id, "world")
+        fm, _ = _parse_frontmatter(
+            (temp_cfg.inbox_dir / f"{follow_up.id}.md").read_text(encoding="utf-8")
+        )
+        assert fm.get("extra", {}).get("previous_id") == item.id
+
+    def test_append_leaves_original_file_untouched(self, temp_cfg):
+        item = capture(temp_cfg, "hello")
+        append_inbox_item(temp_cfg, item.id, "world")
+        original = read_inbox_item(temp_cfg, item.id)
+        assert original is not None
+        assert original.content == "hello"
+        assert len(list(temp_cfg.inbox_dir.glob("*.md"))) == 2
+
+    def test_append_rejects_empty_text(self, temp_cfg):
+        item = capture(temp_cfg, "hello")
+        with pytest.raises(ValueError, match="Cannot append empty content"):
+            append_inbox_item(temp_cfg, item.id, "   \n\t  ")
+
+    def test_append_missing_item_raises(self, temp_cfg):
+        with pytest.raises(ValueError, match="Inbox item not found"):
+            append_inbox_item(temp_cfg, "doesnotexist", "text")
 
 
 class TestPageRoundTrip:
