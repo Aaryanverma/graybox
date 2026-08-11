@@ -9,6 +9,7 @@ provenance.
 Workspace context is injected into the system prompt so extraction is aware of
 the currently active knowledge silo.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,8 +20,12 @@ from graybox.ai import AIService
 from graybox.models import Page, TYPE_DIR, now_iso
 from graybox.prompts import ORGANIZER_PROMPT_TMPL, ORGANIZER_SYSTEM
 from graybox.storage import (
-    find_page_by_name, list_pages, list_unprocessed, mark_processed,
-    slugify, write_page,
+    find_page_by_name,
+    list_pages,
+    list_unprocessed,
+    mark_processed,
+    slugify,
+    write_page,
 )
 from graybox.workspace import workspace_context_block
 from graybox.summarizer import refresh_page_summary
@@ -46,8 +51,10 @@ def _extract_json(llm_output: str) -> dict:
             return json.loads(m.group(0))
         raise
 
-def _get_or_create_page(cfg: Config, page_type: str, name: str, aliases: list[str],
-                         summary: str) -> tuple[Page, bool]:
+
+def _get_or_create_page(
+    cfg: Config, page_type: str, name: str, aliases: list[str], summary: str
+) -> tuple[Page, bool]:
     existing = find_page_by_name(cfg, page_type, name)
     if existing:
         return existing, False
@@ -72,10 +79,19 @@ def _get_or_create_page(cfg: Config, page_type: str, name: str, aliases: list[st
         return best_page, False
 
     slug = slugify(name)
-    return Page(
-        id=slug, type=page_type, title=name, created=now_iso(), updated=now_iso(),
-        aliases=list(dict.fromkeys(aliases)), summary=summary,
-    ), True
+    return (
+        Page(
+            id=slug,
+            type=page_type,
+            title=name,
+            created=now_iso(),
+            updated=now_iso(),
+            aliases=list(dict.fromkeys(aliases)),
+            summary=summary,
+        ),
+        True,
+    )
+
 
 def _merge_unique(target: list[str], values: list[str]) -> None:
     seen = set(target)
@@ -84,6 +100,7 @@ def _merge_unique(target: list[str], values: list[str]) -> None:
         if value and value not in seen:
             target.append(value)
             seen.add(value)
+
 
 def _append_note(page: Page, text: str, source_id: str, raw: str = "") -> None:
     line = f"- ({now_iso()}) {text.strip()} _(source: inbox/{source_id})_"
@@ -113,6 +130,7 @@ def _system_prompt(cfg: Config) -> str:
         return f"{ORGANIZER_SYSTEM}\n\nWorkspace context:\n{ctx}"
     return ORGANIZER_SYSTEM
 
+
 def _format_existing_context(hits: list[Hit]) -> str:
     """Render retrieved existing pages (of ANY type) as compact reference
     lines the LLM can match a note against - enough to identify 'this note
@@ -138,6 +156,7 @@ def _format_existing_context(hits: list[Hit]) -> str:
         lines.append(line)
     return "\n".join(lines)
 
+
 def _gather_existing_context(cfg: Config, item_content: str, top_k: int = 10) -> str:
     """Retrieve existing wiki pages of ANY type related to this note BEFORE
     extraction, so the organizer can reconcile state changes against what
@@ -153,13 +172,24 @@ def _gather_existing_context(cfg: Config, item_content: str, top_k: int = 10) ->
     wiki_hits, _ = search_all(cfg, item_content, top_k=top_k, wiki_min_score=0.3)
     return _format_existing_context(wiki_hits)
 
-def process_item(cfg: Config, llm: AIService, item_id: str, item_content: str,
-                  dry_run: bool = False, item_extra: dict | None = None) -> list[str]:
+
+def process_item(
+    cfg: Config,
+    llm: AIService,
+    item_id: str,
+    item_content: str,
+    dry_run: bool = False,
+    item_extra: dict | None = None,
+) -> list[str]:
     existing_context = _gather_existing_context(cfg, item_content)
-    prompt = ORGANIZER_PROMPT_TMPL.format(note=item_content, existing_context=existing_context)
+    prompt = ORGANIZER_PROMPT_TMPL.format(
+        note=item_content, existing_context=existing_context
+    )
     raw = llm.llm_call(system_prompt=_system_prompt(cfg), prompt=prompt)
     if raw["response"] is None:
-        raise RuntimeError("LLM call failed — check logs/config for the underlying API error.")
+        raise RuntimeError(
+            "LLM call failed — check logs/config for the underlying API error."
+        )
     data = _extract_json(raw["response"])
 
     touched: dict[str, Page] = {}
@@ -310,7 +340,7 @@ def process_item(cfg: Config, llm: AIService, item_id: str, item_content: str,
         page, new = _get_or_create_page(cfg, "meeting", title, [], "")
         if meet.get("date"):
             page.date = meet["date"]
-        for a in (meet.get("attendees", []) or []):
+        for a in meet.get("attendees", []) or []:
             a = a.strip()
             if a and a not in page.attendees:
                 page.attendees.append(a)
@@ -319,7 +349,7 @@ def process_item(cfg: Config, llm: AIService, item_id: str, item_content: str,
         touch(page, new)
         meeting_pages.append(page)
 
-        for a in (meet.get("attendees", []) or []):
+        for a in meet.get("attendees", []) or []:
             person_page = name_to_page.get(a.strip().lower())
             if person_page:
                 _link(page, person_page.ref)
@@ -340,13 +370,13 @@ def process_item(cfg: Config, llm: AIService, item_id: str, item_content: str,
         page, new = _get_or_create_page(cfg, "event", title, [], "")
         if evt.get("date"):
             page.date = evt["date"]
-        
+
         description = evt.get("description", "") or f"Event: {title}"
         location = evt.get("location", "")
         detail = description
         if location:
             detail += f" (location: {location})"
-            
+
         _append_note(page, detail, item_id, raw=item_content)
         touch(page, new)
 
@@ -366,7 +396,9 @@ def organize_all(cfg: Config, llm: AIService, dry_run: bool = False) -> dict:
 
     for item in list_unprocessed(cfg):
         try:
-            refs = process_item(cfg, llm, item.id, item.content, dry_run=dry_run)
+            refs = process_item(
+                cfg, llm, item.id, item.content, dry_run=dry_run, item_extra=item.extra
+            )
             if not dry_run:
                 mark_processed(cfg, item.id, refs)
             report["processed"].append({"item": item.id, "pages": refs})
@@ -377,6 +409,7 @@ def organize_all(cfg: Config, llm: AIService, dry_run: bool = False) -> dict:
     # Auto-refresh summaries for pages that were touched and have enough notes
     if not dry_run and touched_refs and getattr(cfg, "auto_refresh_summaries", True):
         from graybox.storage import read_page
+
         for ref in touched_refs:
             try:
                 page_type, slug = ref.split("/", 1)
