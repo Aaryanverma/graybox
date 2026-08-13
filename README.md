@@ -115,7 +115,7 @@ pip install graybox
 # for tests
 pip install graybox[test]
 
-# for azure auth
+# for azure auth (to enable microsoft entra id authentication)
 pip install graybox[azure]
 ```
 
@@ -258,7 +258,7 @@ export GRAYBOX_USE_GLOBAL_CONFIG=1
 Sample Config File
 
 ```yaml
-root: ".graybox"          # app root inside the current terminal directory
+root: ".graybox"          # app root inside the current terminal directory (set it before running graybox)
 default_workspace: "personal"  # workspace created/used the very first time you run any command
 env_file: "creds.env"          # optional .env file for API keys
 
@@ -283,6 +283,23 @@ All three thresholds — `min_score`, `dedup_threshold`, and (when embeddings ar
 
 - **`min_score`** gates whether a wiki/inbox page is *relevant enough to a question* (used by `ask`/`chat`/`search`, for both keyword and semantic scoring). A page that strongly answers a focused question typically scores `0.6`–`1.0`; `~0.35`–`0.5` is a reasonable "loosely relevant" floor.
 - **`dedup_threshold`** gates whether two *names* are the *same real-world entity* (used by `organize` when deciding whether to reuse an existing page, and by `dupes`/`merge`). Typo'd or nickname variants of the same name score `~0.85`–`1.0`; unrelated names score well below that, so this threshold wants to stay high to avoid accidentally merging distinct people/projects.
+
+### Microsoft Entra ID Authentication
+
+For using models hosted on Azure/Microsoft Foundry using Microsoft Entra ID authentication:
+
+```yaml
+llm:
+  model_name: azure/<deployment-name>
+  base_url: https://<resource-name>.openai.azure.com/
+  api_version: "2025-01-01-preview"
+  temperature: 0.0
+  auth: azure #  <-- to be added (aliases: azure/entra/ms_entra/microsoft_entra)
+```
+> [!Note]
+> - Model quality matters. Gray Box relies on the LLM for knowledge organization and retrieval.
+> - For the best experience, use a reasonably capable model. Smaller or weaker models may still work, but can produce lower-quality organization, miss relationships or entities, and reduce the quality of answers later.
+> - You don't necessarily need the largest or most expensive model. A good general-purpose model with reliable structured-output/JSON support is recommended.
 
 **Key environment variable overrides:**
 
@@ -455,6 +472,8 @@ Longevity and inspectability. A `.md` file with YAML frontmatter opens in litera
 
 ## Roadmap
 
+- [ ] Quick Capture
+- [ ] Migrating external vaults
 - [ ] Decision Intelligence & Memory Timeline
 - [ ] Meeting summarization
 - [ ] Automatic daily journal digest

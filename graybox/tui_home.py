@@ -81,7 +81,7 @@ class HomeSnapshot:
 
 
 def build_home_snapshot(cfg) -> HomeSnapshot:
-    data = build_dashboard_data(cfg)
+    data = build_dashboard_data(cfg, light=True)
     summary = data["summary"]
     meta = data["meta"]
 

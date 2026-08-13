@@ -14,6 +14,7 @@ workspace/
 No database is used yet for the wiki content itself; the DB files are
 workspace-scoped placeholders so future indexes can slot in cleanly.
 """
+
 from __future__ import annotations
 
 import json
@@ -59,11 +60,13 @@ def ensure_workspace(cfg: Config) -> None:
 # Inbox (append-only, immutable)
 # ---------------------------------------------------------------------------
 
+
 def write_inbox_item(cfg: Config, content: str, extra: dict | None = None) -> InboxItem:
     ensure_workspace(cfg)
     inbox_dir = cfg.inbox_dir
     item_id = f"{now_id_ts()}-{secrets.token_hex(2)}"
-    fm = {"id": item_id, "created": now_iso()}
+    created = now_iso()
+    fm = {"id": item_id, "created": created}
     if extra:
         fm["extra"] = extra
     body = (
@@ -78,11 +81,12 @@ def write_inbox_item(cfg: Config, content: str, extra: dict | None = None) -> In
     invalidate_inbox(cfg, item_id)
     return InboxItem(
         id=item_id,
-        created=fm["created"],
+        created=created,
         content=content.strip(),
         path=str(path),
         extra=extra or {},
     )
+
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
     m = FRONTMATTER_RE.match(text)
@@ -100,17 +104,20 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
 def read_inbox_item(cfg: Config, item_id: str) -> InboxItem | None:
     path = cfg.inbox_dir / f"{item_id}.md"
     from graybox.index import cached_read_inbox
+
     return cached_read_inbox(path, cfg)
 
 
 def list_inbox_items(cfg: Config, include_forgotten: bool = False) -> list[InboxItem]:
     from graybox.index import cached_list_inbox_items
+
     return cached_list_inbox_items(cfg, include_forgotten=include_forgotten)
 
 
 # ---------------------------------------------------------------------------
 # Processed-state tracking (kept OUTSIDE inbox/ so inbox stays immutable)
 # ---------------------------------------------------------------------------
+
 
 def _processed_path(cfg: Config) -> Path:
     return cfg.state_dir / "processed.json"
@@ -146,6 +153,7 @@ def list_unprocessed(cfg: Config) -> list[InboxItem]:
 # Forgotten-item tombstones (soft-delete for bad captures)
 # ---------------------------------------------------------------------------
 
+
 def _forgotten_path(cfg: Config) -> Path:
     return cfg.state_dir / "forgotten.json"
 
@@ -179,6 +187,7 @@ def is_forgotten(cfg: Config, item_id: str) -> bool:
 # Wiki pages
 # ---------------------------------------------------------------------------
 
+
 def page_path(cfg: Config, page_type: str, slug: str) -> Path:
     directory = TYPE_DIR.get(page_type, "topics")
     return cfg.wiki_dir / directory / f"{slug}.md"
@@ -190,14 +199,30 @@ def _render_page(page: Page) -> str:
     if page.summary:
         lines.append("## Summary\n" + page.summary.strip() + "\n")
     if page.attendees:
-        lines.append("## Attendees\n" + "\n".join(f"- {a}" for a in page.attendees) + "\n")
-    lines.append("## Notes\n" + ("\n".join(page.notes) if page.notes else "_No notes yet._") + "\n")
+        lines.append(
+            "## Attendees\n" + "\n".join(f"- {a}" for a in page.attendees) + "\n"
+        )
+    lines.append(
+        "## Notes\n"
+        + ("\n".join(page.notes) if page.notes else "_No notes yet._")
+        + "\n"
+    )
     if page.related:
-        lines.append("## Related\n" + "\n".join(f"- [[{r}]]" for r in sorted(set(page.related))) + "\n")
+        lines.append(
+            "## Related\n"
+            + "\n".join(f"- [[{r}]]" for r in sorted(set(page.related)))
+            + "\n"
+        )
     if page.backlinks:
-        lines.append("## Backlinks\n" + "\n".join(f"- [[{r}]]" for r in sorted(set(page.backlinks))) + "\n")
+        lines.append(
+            "## Backlinks\n"
+            + "\n".join(f"- [[{r}]]" for r in sorted(set(page.backlinks)))
+            + "\n"
+        )
     if page.sources:
-        lines.append("## Sources\n" + "\n".join(f"- inbox/{s}" for s in page.sources) + "\n")
+        lines.append(
+            "## Sources\n" + "\n".join(f"- inbox/{s}" for s in page.sources) + "\n"
+        )
     return "\n".join(lines)
 
 
@@ -215,6 +240,7 @@ def write_page(cfg: Config, page: Page) -> Path:
 def read_page(cfg: Config, page_type: str, slug: str) -> Page | None:
     path = page_path(cfg, page_type, slug)
     from graybox.index import cached_read_page
+
     return cached_read_page(path, cfg)
 
 
@@ -231,7 +257,9 @@ def _parse_page(path: Path) -> Page:
     title = title_match.group(1).strip() if title_match else fm.get("title", path.stem)
 
     def _section(name: str) -> str:
-        m = re.search(rf"^##\s+{name}\s*\n(.*?)(?=^##\s+|\Z)", body, re.MULTILINE | re.DOTALL)
+        m = re.search(
+            rf"^##\s+{name}\s*\n(.*?)(?=^##\s+|\Z)", body, re.MULTILINE | re.DOTALL
+        )
         return m.group(1).strip() if m else ""
 
     summary = _section("Summary")
@@ -264,6 +292,7 @@ def _parse_page(path: Path) -> Page:
 
 def list_pages(cfg: Config, page_type: str | None = None) -> list[Page]:
     from graybox.index import cached_list_pages
+
     return cached_list_pages(cfg, page_type=page_type)
 
 
@@ -279,7 +308,9 @@ def find_page_by_name(cfg: Config, page_type: str, name: str) -> Page | None:
     return None
 
 
-def _replace_ref(refs: list[str], old_ref: str, new_ref: str | None, self_ref: str) -> list[str]:
+def _replace_ref(
+    refs: list[str], old_ref: str, new_ref: str | None, self_ref: str
+) -> list[str]:
     out = []
     for r in refs:
         if r == old_ref:
@@ -292,8 +323,8 @@ def _replace_ref(refs: list[str], old_ref: str, new_ref: str | None, self_ref: s
 
 def _replace_wiki_link(match: re.Match, new_ref: str | None) -> str:
     """[[old_ref|Display]] → [[new_ref]]  or  just Display/old_ref on deletion."""
-    inner = match.group(0)[2:-2]          # strip [[ and ]]
-    display = inner.split('|', 1)[1] if '|' in inner else inner
+    inner = match.group(0)[2:-2]  # strip [[ and ]]
+    display = inner.split("|", 1)[1] if "|" in inner else inner
     if new_ref:
         return f"[[{new_ref}]]"
     return display
