@@ -4,12 +4,6 @@ Service layer for External APIs (LLMs, Embeddings, Rerankers).
 """
 
 import os
-
-# litellm's own import fetches its model-cost map from GitHub over the
-# network, which hangs ~20s on networks without routable IPv6 (and adds
-# latency for everyone). Set this BEFORE `from litellm import ...` below so
-# litellm uses its bundled local cost map and performs no network call during
-# import — Gray Box only needs `completion_cost` for logging.
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "true")
 
 from typing import Optional, List, Any

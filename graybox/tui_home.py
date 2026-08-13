@@ -98,13 +98,15 @@ def build_home_snapshot(cfg) -> HomeSnapshot:
         recent_lines.append("No Recent Memories")
 
     focus_lines: list[str] = []
-    for task in summary["focus_items"][:5]:
+    for task in summary["focus_items"]:
         title = task.get("title") or "(untitled task)"
         due = task.get("due") or ""
         if due:
             focus_lines.append(f"{title} · {due}")
         else:
             focus_lines.append(title)
+        if len(focus_lines) >= 5:
+            break
             
     if not focus_lines:
         focus_lines.append("No urgent tasks")
@@ -378,17 +380,30 @@ class GrayBoxApp(App):
     """
 
     BINDINGS = [
-        Binding("q,escape", "quit", "Quit", show=True),
+        Binding("q", "quit", "Quit", show=True),
+        Binding("escape", "back_or_quit", "Back", show=True),
         Binding("enter", "select_action", "Open", show=True),
         Binding("up,k", "cursor_up", "Move Up", show=False),
         Binding("down,j", "cursor_down", "Move Down", show=False),
     ]
 
-    def __init__(self, snapshot: HomeSnapshot, options: Sequence[tuple[str, str]], cfg, **kwargs):
+    _MORE_ID = "more..."
+    _BACK_ID = "back"
+
+    def __init__(
+        self,
+        snapshot: HomeSnapshot,
+        primary_options: Sequence[tuple[str, str]],
+        secondary_options: Sequence[tuple[str, str]],
+        cfg,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.snapshot = snapshot
-        self.menu_options = options
+        self.primary_options = list(primary_options)
+        self.secondary_options = list(secondary_options)
         self.cfg = cfg
+        self.current_menu: str = "primary"  # "primary" | "secondary"
 
     def compose(self) -> ComposeResult:
         with Vertical(id="header-box"):
@@ -420,24 +435,18 @@ class GrayBoxApp(App):
             actions = Vertical(id="actions-panel")
             actions.border_title = "Actions"
             with actions:
-                option_items = [
-                    Option(f"{cmd.ljust(12)}            [dim]{desc}[/dim]", id=cmd) 
-                    if cmd not in {"switch-workspace", "create-workspace"}
-                    else Option(f"{cmd.ljust(12)}        [dim]{desc}[/dim]", id=cmd)
-                    for cmd, desc in self.menu_options
-                ]
-                yield OptionList(*option_items, id="action-list")
+                yield OptionList(*self._build_option_items(self.primary_options), id="action-list")
 
             digest = Vertical(id="digest-panel")
             digest.border_title = "What's in the Box"
             with digest:
                 yield Static("Recent", classes="digest-title")
-                for item in self.snapshot.recent_lines[:4]:
+                for item in self.snapshot.recent_lines:
                     prefix = "" if item == "No Recent Memories" else "• "
                     yield Static(f"{prefix}{item}", classes="digest-item")
                 
                 yield Static("\nFocus", classes="digest-title")
-                for item in self.snapshot.focus_lines[:4]:
+                for item in self.snapshot.focus_lines:
                     prefix = "" if item == "No urgent tasks" else "• "
                     yield Static(f"{prefix}{item}", classes="digest-item")
 
@@ -452,9 +461,42 @@ class GrayBoxApp(App):
         except Exception:
             pass
 
+    def _build_option_items(self, options: Sequence[tuple[str, str]]) -> list[Option]:
+        """Render (cmd, description) pairs into OptionList entries."""
+        return [
+            Option(
+                f"{cmd:<24}[dim]{desc}[/dim]",
+                id=cmd,
+            )
+            for cmd, desc in options
+        ]
+
+    def _show_primary_menu(self) -> None:
+        self.current_menu = "primary"
+        option_list = self.query_one("#action-list", OptionList)
+        option_list.clear_options()
+        option_list.add_options(self._build_option_items(self.primary_options))
+        option_list.highlighted = 0
+        self.query_one("#actions-panel", Vertical).border_title = "Actions"
+
+    def _show_secondary_menu(self) -> None:
+        self.current_menu = "secondary"
+        option_list = self.query_one("#action-list", OptionList)
+        option_list.clear_options()
+        back_item = Option(f"{'back'.ljust(12)}            [dim]Return to main menu[/dim]", id=self._BACK_ID)
+        option_list.add_options([back_item, *self._build_option_items(self.secondary_options)])
+        option_list.highlighted = 1
+        self.query_one("#actions-panel", Vertical).border_title = "Actions › More"
+
     def _execute_command(self, cmd: str) -> None:
-        # Intercept workspace commands so they don't go to stdin
-        if cmd == "switch-workspace":
+        # "more"/"back" are handled entirely within this screen and never
+        # reach the CLI dispatch layer (_run_cli_command in cli.py).
+        if cmd == self._MORE_ID:
+            self._show_secondary_menu()
+        elif cmd == self._BACK_ID:
+            self._show_primary_menu()
+        elif cmd == "switch-workspace":
+            # Intercept workspace commands so they don't go to stdin
             ws_list = self.cfg.workspace_manager.list()
             current_id = self.cfg.workspace_manager.current().id
             self.push_screen(WorkspaceSwitchScreen(ws_list, current_id), self.handle_switch_result)
@@ -474,10 +516,18 @@ class GrayBoxApp(App):
             self._execute_command(event.option_id)
 
     def action_select_action(self) -> None:
-        option_list = self.query_one(OptionList)
-        if option_list.highlighted is not None:
-            cmd = self.menu_options[option_list.highlighted][0]
-            self._execute_command(cmd)
+        option_list = self.query_one("#action-list", OptionList)
+        option = option_list.highlighted_option
+        if option is not None and option.id:
+            self._execute_command(option.id)
+
+    def action_back_or_quit(self) -> None:
+        # Escape backs out of the secondary submenu first; only quits the
+        # app outright when already on the primary menu.
+        if self.current_menu == "secondary":
+            self._show_primary_menu()
+        else:
+            self.exit()
 
     def handle_switch_result(self, ws_id: str | None) -> None:
         if ws_id:
@@ -504,19 +554,24 @@ def interactive_main(
 ) -> None:
     _resize_terminal(110, 35)
 
-    options: list[tuple[str, str]] = [
-        ("status", "Workspace summary"),
+    primary_options: list[tuple[str, str]] = [
         ("capture", "Capture a note or import"),
-        ("organize", "Process captured notes"),
+        ("organize", "Organize captured notes"),
         ("ask", "Ask one question"),
         ("chat", "Multi-turn Q&A"),
+        ("switch-workspace", "Switch workspace"),
+        ("create-workspace", "Create workspace"),
+        ("dashboard", "Generate dashboard"),
+        ("status", "Workspace summary"),
+        ("migrate-vault", "Import external vault"),
+        ("more...", "More Options"),
+        ("exit", "Quit"),
+    ]
+
+    secondary_options: list[tuple[str, str]] = [
         ("search", "Search knowledge base"),
         ("pages", "List pages"),
         ("dupes", "Find duplicates"),
-        ("dashboard", "Generate dashboard"),
-        ("switch-workspace", "Switch workspace"),
-        ("create-workspace", "Create workspace"),
-        ("exit", "Quit"),
     ]
 
     while True:
@@ -527,7 +582,7 @@ def interactive_main(
             print(f"Failed to load dashboard data: {e}")
             return
             
-        app = GrayBoxApp(snapshot, options, cfg)
+        app = GrayBoxApp(snapshot, primary_options, secondary_options, cfg)
         selected_cmd = app.run()
 
         # Handle workspace switch feedback

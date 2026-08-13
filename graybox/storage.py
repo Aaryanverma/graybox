@@ -92,7 +92,12 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
     m = FRONTMATTER_RE.match(text)
     if not m:
         return {}, text
-    fm = yaml.safe_load(m.group(1)) or {}
+    try:
+        fm = yaml.safe_load(m.group(1)) or {}
+    except yaml.YAMLError:
+        return {}, text
+    if not isinstance(fm, dict):
+        return {}, text
     return fm, m.group(2)
 
 

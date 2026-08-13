@@ -430,3 +430,40 @@ Remove:
 
 Return only the condensed conversation.
 """
+
+MIGRATE_CLASSIFY_SYSTEM = """You are a migration assistant for a personal knowledge base.
+
+You read one existing note (title + body, possibly with existing frontmatter
+tags) from a person's Obsidian vault and classify it into Gray Box's typed
+page model.
+
+You never invent facts. You classify and summarize only what is present.
+
+You respond with STRICT JSON only: no markdown fences, no commentary.
+"""
+
+MIGRATE_CLASSIFY_PROMPT_TMPL = """Classify this note into the Gray Box page model.
+
+Valid types: project, person, meeting, technology, company, topic, task, decision, action, event, journal
+If nothing else fits, use "topic".
+
+Title: {title}
+Existing tags/frontmatter (if any): {frontmatter}
+
+Body:
+---
+{body}
+---
+
+Return a JSON object:
+{{
+  "type": "one of the valid types above",
+  "summary": "1-2 sentence summary of the note, in your own words",
+  "aliases": ["alternate names this entity is known by, if any - else []"]
+}}
+
+Rules:
+- Return STRICT JSON only, no markdown fences.
+- If unsure of type, use "topic" rather than guessing something more specific.
+- Never invent facts not present in the note.
+"""
