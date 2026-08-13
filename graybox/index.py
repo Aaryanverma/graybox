@@ -149,6 +149,7 @@ def cached_read_inbox(path: Path, cfg: Config) -> Optional[InboxItem]:
         created=fm.get("created", ""),
         content=body.strip(),
         path=str(path),
+        extra=fm.get("extra", {}) or {},
     )
     cache[str(path)] = (mtime, item)
     return item
@@ -206,6 +207,7 @@ def cached_list_inbox_items(cfg: Config, include_forgotten: bool = False) -> lis
                 created=fm.get("created", ""),
                 content=body.strip(),
                 path=str(path),
+                extra=fm.get("extra", {}) or {},
             )
             cache[str(path)] = (mtime, item)
             items.append(item)

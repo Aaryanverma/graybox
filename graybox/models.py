@@ -31,7 +31,7 @@ TYPE_DIR = {
     "person": "people",
     "meeting": "meetings",
     "technology": "technologies",
-    "company": "technologies",  # companies filed alongside technologies/orgs
+    "company": "companies",
     "topic": "topics",
     "task": "tasks",
     "decision": "decisions",
@@ -61,6 +61,7 @@ class InboxItem:
     created: str
     content: str
     path: str = ""      # populated on load
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -128,6 +129,7 @@ class VaultNote:
     frontmatter: dict
     body: str                     # body with [[wikilinks]] left intact
     outgoing_links: list[str] = field(default_factory=list)  # raw link target titles
+    source_text: str = ""         # original file contents, including frontmatter
 
 
 @dataclass

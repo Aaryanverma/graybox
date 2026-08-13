@@ -68,7 +68,7 @@ def write_inbox_item(cfg: Config, content: str, extra: dict | None = None) -> In
         fm["extra"] = extra
     body = (
         "---\n"
-        + yaml.safe_dump({"id": item_id, "created": now_iso()}, sort_keys=False)
+        + yaml.safe_dump(fm, sort_keys=False)
         + "---\n\n"
         + content.strip()
         + "\n"
@@ -76,13 +76,24 @@ def write_inbox_item(cfg: Config, content: str, extra: dict | None = None) -> In
     path = inbox_dir / f"{item_id}.md"
     path.write_text(body, encoding="utf-8")
     invalidate_inbox(cfg, item_id)
-    return InboxItem(id=item_id, created=now_iso(), content=content.strip(), path=str(path))
+    return InboxItem(
+        id=item_id,
+        created=fm["created"],
+        content=content.strip(),
+        path=str(path),
+        extra=extra or {},
+    )
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
     m = FRONTMATTER_RE.match(text)
     if not m:
         return {}, text
-    fm = yaml.safe_load(m.group(1)) or {}
+    try:
+        fm = yaml.safe_load(m.group(1)) or {}
+    except yaml.YAMLError:
+        return {}, text
+    if not isinstance(fm, dict):
+        return {}, text
     return fm, m.group(2)
 
 
