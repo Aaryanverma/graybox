@@ -52,11 +52,11 @@ It ships with page types that skew toward work (`project`, `meeting`, `decision`
 No vector database required. No cloud lock-in. No proprietary format. Just `.md` files on your disk that you (or any other tool) can read forever.
 
 ---
-
 ## Table of contents
  
 - [Why it's built this way](#why-its-built-this-way)
 - [How it works](#how-it-works)
+- [What's new in 0.1.8](#whats-new-in-018)
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [Interactive TUI](#interactive-tui)
@@ -65,6 +65,7 @@ No vector database required. No cloud lock-in. No proprietary format. Just `.md`
 - [Configuration](#configuration)
 - [What a wiki page looks like](#what-a-wiki-page-looks-like)
 - [Design principles](#design-principles)
+- [Migrate external vault](#migrate-external-vault)
 - [Roadmap](#roadmap)
 
 ---
@@ -168,7 +169,7 @@ This still calls the LLM and shows you exactly which pages would be created (`ne
 
 ## Interactive TUI
 
-Run `graybox` with no arguments to drop into a full-screen terminal UI (built on [Textual](https://github.com/Textualize/textual)) — arrow keys to move, Enter to select — where `capture`, `organize`, `ask`, `chat`, `search`, `pages`, `dupes`, `dashboard`, and workspace switching are all just a keystroke away. It's the recommended way to get a feel for the whole loop (capture → organize → ask) without memorizing any commands.
+Run `graybox` with no arguments to drop into a full-screen terminal UI (built on [Textual](https://github.com/Textualize/textual)) — arrow keys to move, Enter to select, and Escape to go back — where `capture`, `organize`, `ask`, `chat`, `dashboard`, `migrate-vault`, and workspace switching are all just a keystroke away. Search, pages, and duplicate browsing are available under **More Options**. It's the recommended way to get a feel for the whole loop (capture → organize → ask) without memorizing any commands.
 
 <div align='center'>
 <img src = 'assets/tui.png' width=700></img>
@@ -216,7 +217,7 @@ A few things worth knowing:
 | `graybox ask "<question>"` | Searches the wiki (keyword + optional semantic + 1-hop graph expansion), asks the LLM to answer using only what it finds, and prints the answer plus its sources. |
 | `graybox chat` | Multi-turn Q&A session — ask follow-ups without returning to the main menu each time. Conversation history is threaded into both search and the LLM prompt, so pronouns/ellipsis ("when's it due?", "why him?") resolve against the previous turn. Grounding rules still apply: history only resolves references, never supplies facts on its own. `--all` to search across every workspace. |
 | `graybox search "<query>"` | Fast local keyword search over wiki pages — no LLM call. `--top-k N` to control result count. |
-| `graybox pages` | Lists all wiki pages. Filter with `--type project\|person\|meeting\|technology\|topic\|task\|action\|decision\|event`. |
+| `graybox pages` | Lists all wiki pages. Filter with `--type project\|person\|meeting\|technology\|company\|topic\|task\|action\|decision\|event`. |
 | `graybox status` | Quick summary: workspace path, inbox count, page count, active LLM model. |
 | `graybox dashboard` | Generates a self-contained, read-only HTML dashboard (`<workspace>/exports/dashboard.html`) with a task kanban board, filters, and a force-directed graph of your wiki's cross-links. Never writes back to `inbox/` or `wiki/`. [See Example](assets/dashboard.png)|
 | `graybox dupes` | Flags wiki pages that *look* like duplicates (fuzzy name match). Suggestion only — nothing is merged automatically. `--type` to restrict, `--threshold` (0–1, closer to 1 = more similar; default: `retrieval.dedup_threshold`, 0.85) to tune sensitivity. |
@@ -226,6 +227,7 @@ A few things worth knowing:
 | `graybox forget <item-id>` | Retracts a bad capture. By default it's a soft tombstone — the raw file stays on disk but is excluded from `search`, `pages` counts, and future `organize` runs. `--purge` also deletes the raw file (irreversible). `--scrub` additionally strips any notes already extracted from it out of the wiki pages they landed in. `--reason "..."` records why. |
 | `graybox rebuild-index` | Rebuilds the embedding index for semantic search (only relevant if `embeddings.enabled: true`). Backfills pages written before embeddings were turned on. |
 | `graybox refresh-summaries` | Re-synthesizes each page's summary from its accumulated notes, so long-lived pages don't go stale. `--type`, `--dry-run`, `--min-notes`, `--verbose` supported. |
+| `graybox migrate-vault <vault-path>` | One-time import of an existing Obsidian Markdown vault. Classifies notes, creates or merges typed pages, preserves source provenance, and rewrites recognized links. Add `--dry-run` to preview without writing. Run `graybox rebuild-index` afterward when embeddings are enabled. |
 | `graybox workspace-list` | Lists every workspace, marking which one is currently active. |
 | `graybox workspace-switch [name]` | Switches the active workspace. Omit `name` for an interactive picker. |
 | `graybox workspace-create [name]` | Creates a new, empty workspace and switches to it. `--description "..."` for a note; `--path <custom-path>` to store its data somewhere other than the default `<root>/workspaces/<name>/`. Omit `name` to be prompted interactively. |
@@ -370,6 +372,29 @@ Every fact traces back to a `sources:` entry — an inbox item ID — so you can
 
 ---
 
+## Migrate external vault
+
+Migration of external vault directly into Gray Box is currently supported for Obsidian only.
+
+- **Obsidian vault migration** — import an existing vault of Markdown notes into the current Gray Box workspace. Notes are classified into typed pages, existing pages can be matched and merged, and the original source remains traceable through the inbox.
+- **A safe migration preview** — use `--dry-run` to see which pages would be created or merged without writing files. Migration is intentionally one-time, not a synchronization feature; keep a backup and avoid re-running it against a vault that has already been imported and edited.
+
+Either run through TUI
+
+or through following CLI commands:
+
+```bash
+# Preview the import
+graybox migrate-vault /path/to/your/obsidian-vault --dry-run
+
+# Run the import
+graybox migrate-vault /path/to/your/obsidian-vault
+```
+
+The command recursively reads `.md` notes, skips Obsidian's `.obsidian/` bookkeeping directory, and reports created, merged, skipped, and failed notes. If embeddings are enabled, run `graybox rebuild-index` after the import.
+
+---
+
 ## FAQ
 
 <details>
@@ -472,8 +497,8 @@ Longevity and inspectability. A `.md` file with YAML frontmatter opens in litera
 
 ## Roadmap
 
-- [ ] Quick Capture
-- [ ] Migrating external vaults
+- [ ] Quick Capture (To be implemented as a separate library)
+- [x] Migrating external vaults
 - [ ] Decision Intelligence & Memory Timeline
 - [ ] Meeting summarization
 - [ ] Automatic daily journal digest
