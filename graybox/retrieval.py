@@ -550,7 +550,7 @@ def ask(cfg, llm, question, all_workspaces=False, history=None) -> Answer:
             )
 
     # ---- Path C: weak wiki hits exist -> still try, but warn ----
-    if wiki_hits:
+    if not strong_wiki and wiki_hits:
         warning = ("⚠️  No high-confidence matches were found. The following is based "
                    "on loosely related pages and may be incomplete.\n\n")
         text = _answer_with(cfg, llm, wiki_hits, question, history_block, all_workspaces)

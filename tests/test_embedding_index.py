@@ -60,6 +60,21 @@ class TestEmbeddingIndex:
         results = idx.search([0.0, 1.0, 0.0], min_score=0.1)
         assert len(results) == 0
 
+    def test_default_calibration_keeps_realistic_semantic_match(self, temp_cfg):
+        """The default low anchor must be below the fixed 0.5 high anchor.
+
+        A raw cosine score of 0.3 is a useful match for the embedding models
+        this index targets. With the former 0.6 default it was clamped to 0,
+        silently disabling semantic retrieval for ordinary matches.
+        """
+        idx = EmbeddingIndex(temp_cfg)
+        page = Page(id="related", type="topic", title="Related", created=now_iso(), updated=now_iso())
+        idx.index_page(page, [0.3, (1 - 0.3 ** 2) ** 0.5])
+
+        results = idx.search([1.0, 0.0], min_score=temp_cfg.retrieval.min_score)
+
+        assert results == [("topic/related", 0.4286)]
+
     def test_needs_reindex_on_content_change(self, temp_cfg):
         idx = EmbeddingIndex(temp_cfg)
         page = Page(id="change", type="topic", title="Change", created=now_iso(), updated=now_iso(), summary="Old")

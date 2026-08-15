@@ -39,6 +39,11 @@ DEFAULTS = {
         #   focused question typically lands ~0.6-1.0; ~0.35-0.5 is a
         #   reasonable "loosely relevant" floor.
         "min_score": 0.4,
+        # Raw cosine-similarity floor used as the low calibration anchor for
+        # embedding search. It must stay below embedding_index's 0.5 high
+        # anchor; 0.15 keeps typical meaningful similarities (~0.15-0.35)
+        # distinguishable after normalization.
+        "semantic_min_score": 0.15,
         # dedup_threshold: how similar two names must be (Engine.name_scorer,
         # difflib-based) before the Organizer treats them as the same
         # real-world entity (or `dupes` flags them as likely duplicates).
@@ -98,7 +103,9 @@ class RetrievalConfig:
     top_k: int
     min_score: float
     dedup_threshold: float = 0.85
-    semantic_min_score: float = 0.6
+    # Raw cosine-similarity low anchor for semantic-score normalization.
+    # Must remain below embedding_index._CALIBRATION_HIGH (currently 0.5).
+    semantic_min_score: float = 0.15
     graph_max_hops: int = 1
     graph_max_nodes: int = 15
     graph_max_neighbors_per_node: int = 5

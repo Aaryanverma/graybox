@@ -328,6 +328,42 @@ class TestWeakWikiFallback:
         assert "Loosely related answer" in answer.text
         # Path C's warning must NOT claim this came from raw captures -
         # it came from an actual wiki page, just a weak match.
+
+
+class TestPathCSkippedWhenAlreadyTriedInPathA:
+    """Regression test: when strong_wiki fires (Path A) but the LLM
+    honestly refuses given that context, Path C used to re-run with the
+    *same* wiki_hits (graph expansion runs off strong_wiki, so Path C's
+    wiki_hits was already a superset Path A had already tried) - a
+    guaranteed-repeat LLM call for nothing. Path C must only fire when
+    strong_wiki was empty to begin with."""
+
+    def test_refused_strong_wiki_does_not_retrigger_identical_call_in_path_c(self, temp_cfg):
+        from graybox.retrieval import NO_EVIDENCE_MSG
+
+        write_page(temp_cfg, Page(
+            id="camera", type="task", title="Buy new camera",
+            created=now_iso(), updated=now_iso(),
+            summary="Irrelevant page that happens to clear min_score for this query.",
+        ))
+
+        prompts_seen = []
+
+        def fake_llm_call(system_prompt=None, prompt=None, **kw):
+            prompts_seen.append(prompt)
+            return {"response": NO_EVIDENCE_MSG}
+
+        llm = MagicMock()
+        llm.embedding_call.return_value = None
+        llm.llm_call.side_effect = fake_llm_call
+
+        answer = ask(temp_cfg, llm, "buy new camera")
+
+        assert len(prompts_seen) == 1, (
+            "Path C re-ran with the same wiki_hits Path A already refused on"
+        )
+        assert answer.grounded is False
+        assert answer.fallback_kind == ""
         assert "raw" not in answer.text.lower()
 
 
