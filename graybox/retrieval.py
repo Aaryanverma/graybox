@@ -48,12 +48,23 @@ class Answer:
     sources: list[str]
     grounded: bool
     fallback: bool = False
+    fallback_kind: str = ""
+
+_REFUSAL_PREFIX = "I don't have enough information in the knowledge base to answer that."
+
+
+def _is_refusal(response: str | None) -> bool:
+    if not response:
+        return True
+    return response.strip().lower().startswith(_REFUSAL_PREFIX.lower())
 
 
 NO_EVIDENCE_MSG = (
     "I don't have enough information in the knowledge base to answer that. "
     "Try capturing more notes about this topic, or rephrase the question."
 )
+
+_WEAK_INBOX_FLOOR = 0.05
 
 # How many prior turns to keep threading into context. Capped so a long
 # chat session doesn't quietly balloon prompt size/cost on every turn.
@@ -445,13 +456,27 @@ def _dedupe_by_ref(hits: list[Hit]) -> list[Hit]:
         out.append(h)
     return out
 
+def _answer_with(cfg, llm, hits, question, history_block, all_workspaces) -> dict:
+    """Build context from `hits`, compress it, and call the LLM. Shared by
+    every fallback path so context-building/compression/prompt-selection
+    logic lives in exactly one place."""
+    context = _build_context(hits, all_workspaces=all_workspaces)
+    max_tokens = cfg.llm.max_tokens or cfg.llm.max_completion_tokens or 8196
+    context = compress_context(context, llm, max_tokens=max_tokens,
+                               prompt=RETRIEVAL_COMPRESSION_PROMPT)
+    prompt = (CHAT_RETRIEVAL_PROMPT_TMPL if history_block else RETRIEVAL_PROMPT_TMPL).format(
+        history=history_block, context=context, question=question)
+    return llm.llm_call(system_prompt=_system_prompt(cfg), prompt=prompt)
+
+
 def ask(cfg, llm, question, all_workspaces=False, history=None) -> Answer:
     history = history or []
     history_block = _build_history_block(history, llm)
     search_query = _prepare_search_query(llm, question, history, history_block)
 
     wiki_hits, inbox_hits = search_all(
-        cfg, search_query, top_k=cfg.retrieval.top_k, all_workspaces=all_workspaces
+        cfg, search_query, top_k=cfg.retrieval.top_k, all_workspaces=all_workspaces,
+        inbox_min_score=_WEAK_INBOX_FLOOR,
     )
 
     # ---- semantic enrichment ----
@@ -490,62 +515,64 @@ def ask(cfg, llm, question, all_workspaces=False, history=None) -> Answer:
     else:
         wiki_hits = _dedupe_by_ref(wiki_hits)   # keep sub-threshold hits as fallback
 
-    inbox_threshold = getattr(cfg.retrieval, "inbox_min_score",
-                              cfg.retrieval.min_score * 0.5)
+    inbox_threshold = (
+        cfg.retrieval.inbox_min_score
+        if cfg.retrieval.inbox_min_score is not None
+        else cfg.retrieval.min_score * 0.5
+    )
     strong_inbox = [h for h in inbox_hits if h.score >= inbox_threshold]
+    weak_inbox = [h for h in inbox_hits if h not in strong_inbox][:3]
 
     # ---- Path A: strong wiki hits -> normal grounded answer ----
     if strong_wiki:
-        context = _build_context(wiki_hits, all_workspaces=all_workspaces)
-        max_tokens = cfg.llm.max_tokens or cfg.llm.max_completion_tokens or 8196
-        context = compress_context(context, llm, max_tokens=max_tokens,
-                                   prompt=RETRIEVAL_COMPRESSION_PROMPT)
-        prompt = (CHAT_RETRIEVAL_PROMPT_TMPL if history_block else RETRIEVAL_PROMPT_TMPL).format(
-            history=history_block, context=context, question=question)
-        text = llm.llm_call(system_prompt=_system_prompt(cfg), prompt=prompt)
-        if text.get("response"):
-            return Answer(text=text["response"].strip(),
+        text = _answer_with(cfg, llm, wiki_hits, question, history_block, all_workspaces)
+        response = text.get("response")
+        if response and not _is_refusal(response):
+            return Answer(text=response.strip(),
                           sources=[_source_tag(h, all_workspaces) for h in wiki_hits],
-                          grounded=True, fallback=False)
+                          grounded=True, fallback=False, fallback_kind="")
+        # else: the model honestly found nothing useful in these pages -
+        # fall through rather than returning its refusal as final, since a
+        # weaker-confidence tier below may hold the actual evidence.
 
     # ---- Path B: no strong wiki, but inbox has the raw note -> warn + answer ----
     if strong_inbox:
-        context = _build_context(strong_inbox, all_workspaces=all_workspaces)
-        max_tokens = cfg.llm.max_tokens or cfg.llm.max_completion_tokens or 8196
-        context = compress_context(context, llm, max_tokens=max_tokens,
-                                   prompt=RETRIEVAL_COMPRESSION_PROMPT)
-
         warning = ("⚠️  These results come from raw, un-organized inbox captures — "
                    "the structured knowledge base has no page for this query yet. "
                    "Run the organizer to promote these notes into the wiki.\n\n")
-
-        prompt = (CHAT_RETRIEVAL_PROMPT_TMPL if history_block else RETRIEVAL_PROMPT_TMPL).format(
-            history=history_block, context=context, question=question)
-        text = llm.llm_call(system_prompt=_system_prompt(cfg), prompt=prompt)
-        if text and text.get("response"):
+        text = _answer_with(cfg, llm, strong_inbox, question, history_block, all_workspaces)
+        response = text.get("response") if text else None
+        if response and not _is_refusal(response):
             return Answer(
-                text=warning + text["response"].strip(),
+                text=warning + response.strip(),
                 sources=[_source_tag(h, all_workspaces) for h in strong_inbox],
-                grounded=True, fallback=True,
+                grounded=True, fallback=True, fallback_kind="inbox",
             )
-    if not strong_inbox and inbox_hits:
-        # Last-ditch: take whatever inbox gave us, even below threshold.
-        strong_inbox = inbox_hits[:3]
 
     # ---- Path C: weak wiki hits exist -> still try, but warn ----
     if wiki_hits:
-        context = _build_context(wiki_hits, all_workspaces=all_workspaces)
-        max_tokens = cfg.llm.max_tokens or cfg.llm.max_completion_tokens or 8196
-        context = compress_context(context, llm, max_tokens=max_tokens,
-                                   prompt=RETRIEVAL_COMPRESSION_PROMPT)
         warning = ("⚠️  No high-confidence matches were found. The following is based "
                    "on loosely related pages and may be incomplete.\n\n")
-        prompt = (CHAT_RETRIEVAL_PROMPT_TMPL if history_block else RETRIEVAL_PROMPT_TMPL).format(
-            history=history_block, context=context, question=question)
-        text = llm.llm_call(system_prompt=_system_prompt(cfg), prompt=prompt)
-        if text and text.get("response"):
-            return Answer(text=warning + text["response"].strip(),
+        text = _answer_with(cfg, llm, wiki_hits, question, history_block, all_workspaces)
+        response = text.get("response") if text else None
+        if response and not _is_refusal(response):
+            return Answer(text=warning + response.strip(),
                           sources=[_source_tag(h, all_workspaces) for h in wiki_hits],
-                          grounded=True, fallback=True)
+                          grounded=True, fallback=True, fallback_kind="weak_wiki")
 
-    return Answer(text=NO_EVIDENCE_MSG, sources=[], grounded=False, fallback=False)
+    # ---- Path D: absolute last resort - inbox hits too weak for Path B ----
+    if weak_inbox:
+        warning = ("⚠️  Only weak, un-organized inbox matches were found for this "
+                   "question — treat the following as a rough lead, not a confident "
+                   "answer. Run the organizer, or capture more detail on this topic, "
+                   "for better results next time.\n\n")
+        text = _answer_with(cfg, llm, weak_inbox, question, history_block, all_workspaces)
+        response = text.get("response") if text else None
+        if response and not _is_refusal(response):
+            return Answer(
+                text=warning + response.strip(),
+                sources=[_source_tag(h, all_workspaces) for h in weak_inbox],
+                grounded=True, fallback=True, fallback_kind="weak_inbox",
+            )
+
+    return Answer(text=NO_EVIDENCE_MSG, sources=[], grounded=False, fallback=False, fallback_kind="")

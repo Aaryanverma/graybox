@@ -104,6 +104,10 @@ class RetrievalConfig:
     graph_max_neighbors_per_node: int = 5
     graph_decay: float = 0.65
     graph_min_score_ratio: float = 0.5
+    # None = derive from min_score * 0.5 (see retrieval.py's inbox_threshold).
+    # Set explicitly only if the inbox-fallback bar needs to move
+    # independently of min_score.
+    inbox_min_score: float | None = None
 
 
 @dataclass
@@ -283,6 +287,7 @@ def load_config(path: str | None = None) -> Config:
         "GRAYBOX_MIN_SCORE": ("retrieval", "min_score"),
         "GRAYBOX_DEDUP_THRESHOLD": ("retrieval", "dedup_threshold"),
         "GRAYBOX_SEMANTIC_MIN_SCORE": ("retrieval", "semantic_min_score"),
+        "GRAYBOX_INBOX_MIN_SCORE": ("retrieval", "inbox_min_score"),
         "GRAYBOX_EMBEDDINGS_ENABLED": ("embeddings", "enabled"),
         "GRAYBOX_EMBEDDINGS_MODEL": ("embeddings", "model_name"),
         "GRAYBOX_EMBEDDINGS_BASE_URL": ("embeddings", "base_url"),
@@ -296,7 +301,7 @@ def load_config(path: str | None = None) -> Config:
             for key in path_keys[:-1]:
                 node = node[key]
             last = path_keys[-1]
-            if last in ("temperature", "min_score", "dedup_threshold", "semantic_min_score"):
+            if last in ("temperature", "min_score", "dedup_threshold", "semantic_min_score", "inbox_min_score"):
                 val = float(val)
             elif last in ("top_k",):
                 val = int(val)

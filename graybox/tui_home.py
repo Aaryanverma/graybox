@@ -351,8 +351,8 @@ class GrayBoxApp(App):
         height: 1fr;
         background: transparent;
         border: none;
-        padding: 1 0;
-        color: #F5EFDA
+        padding: 1 1;
+        color: #F5EFDA;
     }}
 
     OptionList > .option-list--option-highlighted {{
@@ -552,7 +552,7 @@ def interactive_main(
     *,
     run_command: Callable[[str, str | None], None],
 ) -> None:
-    _resize_terminal(110, 35)
+    _resize_terminal(110, 34)
 
     primary_options: list[tuple[str, str]] = [
         ("capture", "Capture a note or import"),
