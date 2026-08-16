@@ -56,7 +56,6 @@ No vector database required. No cloud lock-in. No proprietary format. Just `.md`
  
 - [Why it's built this way](#why-its-built-this-way)
 - [How it works](#how-it-works)
-- [What's new in 0.1.8](#whats-new-in-018)
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [Interactive TUI](#interactive-tui)
