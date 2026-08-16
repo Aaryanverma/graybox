@@ -112,6 +112,8 @@ against what already exists, instead of creating a disconnected duplicate:
 
 {existing_context}
 
+==============================
+
 UNIVERSAL RECONCILIATION RULE:
 - Before extracting ANY entity, task, action, event, decision, or meeting, 
   check whether it refers to the SAME underlying thing as one of the existing 
@@ -220,7 +222,8 @@ remaining completely grounded in the provided context.
 
 Guidelines:
 
-1. Every factual statement must be supported by the supplied context.
+1. Every factual statement must be supported by the supplied context and cited
+   with its source tag.
 
 2. Never invent facts, dates, people, decisions, relationships, or explanations.
 
@@ -248,21 +251,41 @@ Guidelines:
 8. If answering requires combining information from multiple pages, only draw
    conclusions that are explicitly supported by those pages.
 
-9. If the supplied context does not contain enough information to answer the
-   question, reply exactly:
+9. Distinguish direct evidence from inference and unknowns in natural prose:
+   state direct evidence plainly; use clear hedging such as "this suggests" or
+   "the context does not explicitly state" for an inference or unknown detail.
+   An inference is allowed only when it unambiguously follows from the cited
+   context. Never present an inference or an unknown detail as a fact.
+
+10. If the supplied context contains no relevant information for the question,
+    reply exactly:
 
    "I don't have enough information in the knowledge base to answer that."
 
-10. Never guess.
+    If it contains some relevant information but not a complete answer, give
+    the supported portion, cite it, and clearly say what relevant detail is
+    missing. Do not use the refusal merely because the answer is incomplete.
 
-11. Keep answers concise, factual, and directly answer the user's question.
+11. Never guess.
 
-12. Every factual claim must include citations using the supplied source tags.
+12. Keep answers concise, factual, and directly answer the user's question.
+    Use plain prose for simple questions. Use `###` section headings only for
+    broad requests such as "catch me up," a history, or a multi-part overview,
+    and include a section only when the context provides evidence for it.
+
+13. Omit optional insights by default. Include one only when it is genuinely
+    useful, supported by evidence at least as strong as the main answer, and
+    cited. When included, set it apart from the main answer with a lead-in
+    such as "One thing you may want to know:" so it reads as optional context,
+    never as an additional claim woven into the main answer. Otherwise leave
+    it out entirely.
 """
 
 RETRIEVAL_PROMPT_TMPL = """Context pages (each tagged with its source reference):
 
 {context}
+
+====================
 
 Question: {question}
 
@@ -270,7 +293,10 @@ Answer the question using only the context above. Cite the relevant source tag(s
 with markers like [] or [1][2] etc., right after each claim they support and then write 
 sources for each marker below the answer under header "Citations" like [1] project/atlas [2] people/aaryan
 number of sources to cite can be 1 or more depending on how many sources were actually used and relevant for query.
-If the context does not contain the answer, say: "I don't have enough information in the knowledge base to answer that."
+If the context contains some relevant evidence but not a complete answer, answer
+with the supported details and state what is not explicitly provided. Use the
+exact refusal below only when the context contains no relevant information:
+"I don't have enough information in the knowledge base to answer that."
 """
 
 DIGEST_SYSTEM = """You are a workplace journal writer. Given a set of raw notes and the wiki pages
@@ -314,9 +340,13 @@ QUERY_REPHRASE_PROMPT = """Conversation history:
 
 {history}
 
+===================
+
 Current question:
 
 {question}
+
+===================
 
 Rewrite the current question into a complete standalone query.
 
@@ -382,8 +412,10 @@ Instructions:
 - Prefer note timestamps over page created/updated timestamps when describing
   when events occurred.
 - Cite every factual statement using the supplied source tags.
-- If the context does not contain enough information, reply exactly:
-"I don't have enough information in the knowledge base to answer that."
+- If some relevant evidence exists but does not fully answer the question,
+  answer with the supported details and state what is not explicitly provided.
+  Use the exact refusal below only when no relevant evidence exists:
+  "I don't have enough information in the knowledge base to answer that."
 """
 
 RETRIEVAL_COMPRESSION_PROMPT = """You are a highly efficient text summarizer. Summarize the following context.
@@ -395,6 +427,11 @@ Requirements:
 - Preserve numbers.
 - Preserve relationships.
 - Preserve evidence useful for answering questions.
+- Preserve chronological order, including the order of plans, changes,
+  postponements, and decisions. Do not flatten a sequence of events into a
+  single current-state summary.
+- Preserve qualifiers that distinguish direct evidence, uncertainty, and
+  inference. Do not turn an uncertain statement or inference into a fact.
 - Remove repetition.
 - Do not invent information.
 

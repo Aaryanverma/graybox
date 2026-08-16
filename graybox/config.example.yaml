@@ -10,10 +10,10 @@
 
 # Where workspace data (inbox/, wiki/, etc.) is stored on disk.
 # Defaults to ./.graybox next to wherever you run the command.
-# Uncomment to pin it somewhere fixed instead:
-# root: ~/.graybox
 
-default_workspace: personal
+# root: ~/.graybox # <-- uncomment and modify this path to pin your workspace somewhere fixed instead.
+
+default_workspace: personal #default workspace name
 
 # ---------------------------------------------------------------------------
 # LLM — pick ONE of the options below, delete/comment out the rest.
@@ -36,7 +36,7 @@ default_workspace: personal
   # 3. Use it here
 llm:
   model_name: ollama/llama3.1
-  base_url: http://localhost:11434
+  base_url: http://localhost:11434 #leave this to empty string if not applicable
   temperature: 0.1
 
 # ---------------------------------------------------------------------------
@@ -47,6 +47,9 @@ retrieval:
   top_k: 5           # how many pages to pull as context per question
   min_score: 0.8     # relevance floor (0-1, higher = stricter)
   dedup_threshold: 0.85   # how similar two names must be to count as duplicates
+  # inbox_min_score: 0.3  # optional - bar for raw-inbox fallback answers.
+  #                       # Defaults to min_score * 0.5 if unset; only set
+  #                       # this if you want it to stop tracking min_score.
 
 # ---------------------------------------------------------------------------
 # Embeddings — OPTIONAL. Adds semantic (meaning-based) search on top of

@@ -39,6 +39,11 @@ DEFAULTS = {
         #   focused question typically lands ~0.6-1.0; ~0.35-0.5 is a
         #   reasonable "loosely relevant" floor.
         "min_score": 0.4,
+        # Raw cosine-similarity floor used as the low calibration anchor for
+        # embedding search. It must stay below embedding_index's 0.5 high
+        # anchor; 0.15 keeps typical meaningful similarities (~0.15-0.35)
+        # distinguishable after normalization.
+        "semantic_min_score": 0.15,
         # dedup_threshold: how similar two names must be (Engine.name_scorer,
         # difflib-based) before the Organizer treats them as the same
         # real-world entity (or `dupes` flags them as likely duplicates).
@@ -98,12 +103,18 @@ class RetrievalConfig:
     top_k: int
     min_score: float
     dedup_threshold: float = 0.85
-    semantic_min_score: float = 0.6
+    # Raw cosine-similarity low anchor for semantic-score normalization.
+    # Must remain below embedding_index._CALIBRATION_HIGH (currently 0.5).
+    semantic_min_score: float = 0.15
     graph_max_hops: int = 1
     graph_max_nodes: int = 15
     graph_max_neighbors_per_node: int = 5
     graph_decay: float = 0.65
     graph_min_score_ratio: float = 0.5
+    # None = derive from min_score * 0.5 (see retrieval.py's inbox_threshold).
+    # Set explicitly only if the inbox-fallback bar needs to move
+    # independently of min_score.
+    inbox_min_score: float | None = None
 
 
 @dataclass
@@ -283,6 +294,7 @@ def load_config(path: str | None = None) -> Config:
         "GRAYBOX_MIN_SCORE": ("retrieval", "min_score"),
         "GRAYBOX_DEDUP_THRESHOLD": ("retrieval", "dedup_threshold"),
         "GRAYBOX_SEMANTIC_MIN_SCORE": ("retrieval", "semantic_min_score"),
+        "GRAYBOX_INBOX_MIN_SCORE": ("retrieval", "inbox_min_score"),
         "GRAYBOX_EMBEDDINGS_ENABLED": ("embeddings", "enabled"),
         "GRAYBOX_EMBEDDINGS_MODEL": ("embeddings", "model_name"),
         "GRAYBOX_EMBEDDINGS_BASE_URL": ("embeddings", "base_url"),
@@ -296,7 +308,7 @@ def load_config(path: str | None = None) -> Config:
             for key in path_keys[:-1]:
                 node = node[key]
             last = path_keys[-1]
-            if last in ("temperature", "min_score", "dedup_threshold", "semantic_min_score"):
+            if last in ("temperature", "min_score", "dedup_threshold", "semantic_min_score", "inbox_min_score"):
                 val = float(val)
             elif last in ("top_k",):
                 val = int(val)

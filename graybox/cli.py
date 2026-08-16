@@ -22,6 +22,22 @@ from graybox.workspace import Workspace
 from graybox.tui_home import interactive_main
 import logging
 
+FALLBACK_TIPS = {
+    "inbox": "Consider re-running 'organize' or reviewing the relevant page's extraction.",
+    "weak_wiki": "Consider adding more notes on this topic, or rephrasing your question for a stronger match.",
+    "weak_inbox": "Consider re-running 'organize', or capturing more detail on this topic.",
+}
+_DEFAULT_FALLBACK_TIP = FALLBACK_TIPS["inbox"]
+
+
+def _fallback_tip(fallback_kind: str) -> str:
+    """Follow-up guidance line for a fallback Answer, keyed by its
+    fallback_kind (see retrieval.Answer). Falls back to the inbox-style tip
+    for any unrecognized/empty kind so an old caller or a future kind we
+    haven't named yet still gets *something* sensible instead of nothing.
+    """
+    return FALLBACK_TIPS.get(fallback_kind, _DEFAULT_FALLBACK_TIP)
+
 try:
     import readchar
 except ImportError:  # pragma: no cover
@@ -430,12 +446,12 @@ def cmd_ask(args):
     if answer.sources:
         print(f"{ColorCodes.DIM}Sources: {', '.join(answer.sources)}{ColorCodes.RESET}")
     if answer.fallback:
-        print(
-            f"\n{ColorCodes.YELLOW}⚠️  Warning: This answer came from raw captures, not an organized wiki page.{ColorCodes.RESET}"
-        )
-        print(
-            f"{ColorCodes.YELLOW}   Consider re-running 'organize' or reviewing the relevant page's extraction.{ColorCodes.RESET}"
-        )
+        # The situational warning (raw captures vs. weak wiki match vs.
+        # weak inbox match) is already baked into answer.text by
+        # retrieval.py - only the actionable follow-up tip goes here, kept
+        # accurate per fallback_kind instead of one message assumed to
+        # always mean "came from raw captures."
+        print(f"{ColorCodes.YELLOW}   {_fallback_tip(answer.fallback_kind)}{ColorCodes.RESET}")
 
 def cmd_chat(args):
     from graybox.ai import AIService
@@ -475,9 +491,7 @@ def cmd_chat(args):
         if answer.sources:
             print(f"{ColorCodes.DIM}Sources: {', '.join(answer.sources)}{ColorCodes.RESET}")
         if answer.fallback:
-            print(
-                f"{ColorCodes.YELLOW}⚠️  This answer came from raw captures, not an organized wiki page.{ColorCodes.RESET}"
-            )
+            print(f"{ColorCodes.YELLOW}   {_fallback_tip(answer.fallback_kind)}{ColorCodes.RESET}")
         print()
 
         history.append(ConversationTurn(question=q, answer=answer.text))
