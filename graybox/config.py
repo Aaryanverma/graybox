@@ -27,6 +27,9 @@ DEFAULTS = {
         "temperature": 0.0,
     },
     "auto_refresh_summaries": True,
+    "prompts": {
+        "answer_style": "",
+    },
     "retrieval": {
         "top_k": 5,
         # Both thresholds below are normalized to [0, 1] on the SAME scale:
@@ -139,12 +142,18 @@ class EmbeddingsConfig:
 
 
 @dataclass
+class PromptsConfig:
+    answer_style: str = ""
+
+
+@dataclass
 class Config:
     root: Path
     workspace_manager: WorkspaceManager
     llm: LLMConfig
     retrieval: RetrievalConfig
     embeddings: EmbeddingsConfig
+    prompts: PromptsConfig = field(default_factory=PromptsConfig)
     auto_refresh_summaries: bool = True
     raw: dict = field(default_factory=dict)
     config_path: Path | None = None
@@ -221,6 +230,7 @@ class Config:
             llm=self.llm,
             retrieval=self.retrieval,
             embeddings=self.embeddings,
+            prompts=self.prompts,
             raw=copy.deepcopy(self.raw),
             config_path=self.config_path,
         )
@@ -288,6 +298,7 @@ def load_config(path: str | None = None) -> Config:
         "GRAYBOX_DEFAULT_WORKSPACE": ("default_workspace",),
         "GRAYBOX_LLM_MODEL": ("llm", "model_name"),
         "GRAYBOX_LLM_BASE_URL": ("llm", "base_url"),
+        "GRAYBOX_ANSWER_STYLE_PROMPT": ("prompts", "answer_style"),
         "GRAYBOX_LLM_API_KEY": ("llm", "api_key"),
         "GRAYBOX_TEMPERATURE": ("llm", "temperature"),
         "GRAYBOX_TOP_K": ("retrieval", "top_k"),
@@ -339,6 +350,7 @@ def load_config(path: str | None = None) -> Config:
         llm=LLMConfig(**cfg["llm"]),
         retrieval=RetrievalConfig(**cfg["retrieval"]),
         embeddings=EmbeddingsConfig(**cfg.get("embeddings", {})),
+        prompts=PromptsConfig(**cfg.get("prompts", {})),
         auto_refresh_summaries=cfg.get("auto_refresh_summaries", True),
         raw=cfg,
         config_path=candidate,

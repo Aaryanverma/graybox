@@ -40,6 +40,16 @@ llm:
   temperature: 0.1
 
 # ---------------------------------------------------------------------------
+# Ask / Chat answer style — OPTIONAL.
+# This controls presentation only (tone, verbosity, structure, formatting,
+# audience, personality, explanation style, and requested language). It does
+# NOT override Gray Box's grounding, citation, uncertainty, or refusal rules.
+# Environment variable GRAYBOX_ANSWER_STYLE_PROMPT overrides this value.
+# ---------------------------------------------------------------------------
+prompts:
+  answer_style: ""
+
+# ---------------------------------------------------------------------------
 # Retrieval tuning — the defaults below are sane, leave them unless you've
 # noticed search feels too strict/loose in `ask`/`search`.
 # ---------------------------------------------------------------------------

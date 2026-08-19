@@ -289,14 +289,38 @@ RETRIEVAL_PROMPT_TMPL = """Context pages (each tagged with its source reference)
 
 Question: {question}
 
-Answer the question using only the context above. Cite the relevant source tag(s) inline 
-with markers like [] or [1][2] etc., right after each claim they support and then write 
-sources for each marker below the answer under header "Citations" like [1] project/atlas [2] people/aaryan
-number of sources to cite can be 1 or more depending on how many sources were actually used and relevant for query.
-If the context contains some relevant evidence but not a complete answer, answer
-with the supported details and state what is not explicitly provided. Use the
-exact refusal below only when the context contains no relevant information:
-"I don't have enough information in the knowledge base to answer that."
+Answer the question using ONLY the context above.
+
+CITATION RULES:
+- Every factual claim must be supported by the supplied context.
+- Cite each factual claim with a numeric citation marker such as [1], [2], or [1][2].
+- Use ONLY numeric citation markers. Never put source paths, source tags, filenames, or labels directly inside the answer.
+- Place the citation marker immediately after the claim it supports.
+- Use the smallest number of citations necessary to support the claim.
+- Do not cite sources that were not actually used.
+- Do not invent citation numbers.
+- Do not use empty citation markers such as [].
+- Do not write citations in any other format.
+
+After the answer, provide the source mapping under exactly this header:
+
+Citations
+
+Use this exact format:
+
+[1] source/path
+[2] source/path
+
+Only include citation numbers that actually appear in the answer.
+Keep this section compact. Do not add explanations or commentary to it.
+
+If the context contains some relevant evidence but not a complete answer, 
+answer with the supported details and state what is not explicitly provided. 
+Use the exact refusal below only when the context contains no relevant information: "I don't have enough information in the knowledge base to answer that."
+
+====================
+
+Return ONLY the answer and, when applicable, the compact "Citations" section.
 """
 
 DIGEST_SYSTEM = """You are a workplace journal writer. Given a set of raw notes and the wiki pages

@@ -3,7 +3,9 @@
 Service layer for External APIs (LLMs, Embeddings, Rerankers).
 """
 
+import base64
 import os
+
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "true")
 
 from typing import Optional, List, Any
@@ -24,6 +26,7 @@ from litellm import (
     responses,
     aresponses,
 )
+from litellm.utils import supports_pdf_input
 import litellm
 import requests
 import logging
@@ -114,7 +117,60 @@ class AIService:
         }
         return params
 
-    def _build_messages(self, system_prompt: str, prompt: str) -> list[dict]:
+    def _build_messages(
+        self, system_prompt: str, prompt: str, image: str, file_input: str
+    ) -> list[dict]:
+
+        if image and file_input:
+            raise ValueError(
+                "Cannot provide both `image` and `file_input` simultaneously."
+            )
+
+        if file_input:
+            if not supports_pdf_input(self.config.llm.model_name, None):
+                raise ValueError("Model does not support PDF input")
+
+            return (
+                [
+                    {
+                        "role": "system",
+                        "content": system_prompt or "You are a helpful assistant.",
+                    },
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "file",
+                        "file": {
+                            "file_id": file_input,
+                            "format": "application/pdf",
+                        },
+                    },
+                ],
+            )
+
+        if image:
+            if not image.startswith(("http://", "https://")):
+                try:
+                    with open(image, "rb") as image_file:
+                        image = base64.b64encode(image_file.read())
+                        image = f"data:image/png;base64,{image.decode('utf-8')}"
+                except Exception:
+                    raise ValueError(f"Invalid Image path.")
+            else:
+                raise ValueError("Image must be either a URL or Valid File Path.")
+            return [
+                {
+                    "role": "system",
+                    "content": system_prompt or "You are a helpful assistant.",
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": image}},
+                    ],
+                },
+            ]
+
         return [
             {
                 "role": "system",
@@ -155,8 +211,10 @@ class AIService:
     )
     def llm_call(self, system_prompt: str = None, prompt: str = None, **kwargs) -> dict:
         stream = kwargs.pop("stream", False)
+        image = kwargs.pop("image", None)
+        file_input = kwargs.pop("file_input", None)
+        messages = self._build_messages(system_prompt, prompt, image, file_input)
         params = self.get_llm_params(**kwargs)
-        messages = self._build_messages(system_prompt, prompt)
 
         try:
             if params["api_type"] == "responses":
@@ -201,8 +259,10 @@ class AIService:
     def llm_call_stream(
         self, system_prompt: str = None, prompt: str = None, **kwargs
     ) -> dict:
+        image = kwargs.pop("image", None)
+        file_input = kwargs.pop("file_input", None)
+        messages = self._build_messages(system_prompt, prompt, image, file_input)
         params = self.get_llm_params(**kwargs)
-        messages = self._build_messages(system_prompt, prompt)
 
         try:
             if params["api_type"] == "responses":
@@ -251,13 +311,15 @@ class AIService:
     def llm_call_batch(
         self, system_prompt: str = None, prompts: list[str] = None, **kwargs
     ) -> dict:
+        images = kwargs.pop("images", [None] * len(prompts or []))
+        file_inputs = kwargs.pop("file_inputs", [None] * len(prompts or []))
+        batched_messages = [
+            self._build_messages(system_prompt, prompt, image, file_input)
+            for prompt, image, file_input in zip(prompts, images, file_inputs)
+        ]
         params = self.get_llm_params(**kwargs)
         if params["api_type"] != "chat_completion":
             raise ValueError("Batch calls only support chat_completion")
-
-        batched_messages = [
-            self._build_messages(system_prompt, p) for p in (prompts or [])
-        ]
         try:
             responses_list = batch_completion(
                 model=params["model"],
@@ -298,8 +360,10 @@ class AIService:
     async def llm_call_async(
         self, system_prompt: str = None, prompt: str = None, **kwargs
     ) -> dict:
+        image = kwargs.pop("image", None)
+        file_input = kwargs.pop("file_input", None)
+        messages = self._build_messages(system_prompt, prompt, image, file_input)
         params = self.get_llm_params(**kwargs)
-        messages = self._build_messages(system_prompt, prompt)
 
         try:
             if params["api_type"] == "responses":
